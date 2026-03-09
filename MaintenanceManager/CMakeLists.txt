@@ -81,7 +81,7 @@ else()
 endif()
 
 # Include and link for signal, csignal, time, ctime headers
-target_link_libraries(${MODULE_NAME} PRIVATE pthread rt)
+target_link_libraries(${MODULE_NAME} PRIVATE pthread rt -ltelemetry_msgsender)
 
 install(TARGETS ${MODULE_NAME}
         DESTINATION lib/${STORAGE_DIRECTORY}/plugins)
