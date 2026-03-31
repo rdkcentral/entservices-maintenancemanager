@@ -1395,7 +1395,7 @@ namespace WPEFramework
          * @param response_data The JSON object containing the initialization context.
          * @return true if the context was successfully set, false otherwise.
          */
-        bool MaintenanceManager::setDeviceInitializationContext(JsonObject response_data)
+        bool MaintenanceManager::setDeviceInitializationContext(JsonObject& response_data)
         {
             bool setDone = false;
             bool paramEmpty = false;
