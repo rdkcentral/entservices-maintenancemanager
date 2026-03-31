@@ -638,7 +638,7 @@ namespace WPEFramework
                             if (joGetResult.HasLabel(kDeviceInitializationContext))
                             {
                                 MM_LOGINFO("%s found in the response", kDeviceInitializationContext);
-                                success = setDeviceInitializationContext(std::move(joGetResult));
+                                success = setDeviceInitializationContext(joGetResult);
                             }
                             else
                             {
