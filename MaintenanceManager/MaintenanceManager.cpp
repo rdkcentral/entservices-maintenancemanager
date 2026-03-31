@@ -320,8 +320,8 @@ namespace WPEFramework
          */
         MaintenanceManager::MaintenanceManager()
             : PluginHost::JSONRPC(), 
-              m_notify_status(MAINTENANCE_IDLE),
               g_maintenance_data(nullptr),
+              m_notify_status(MAINTENANCE_IDLE),
               g_maintenance_type(UNSOLICITED_MAINTENANCE),
               m_abort_flag(false),
               g_task_status(0),
@@ -1395,7 +1395,7 @@ namespace WPEFramework
          * @param response_data The JSON object containing the initialization context.
          * @return true if the context was successfully set, false otherwise.
          */
-        bool MaintenanceManager::setDeviceInitializationContext(JsonObject& response_data)
+        bool MaintenanceManager::setDeviceInitializationContext(const JsonObject& response_data)
         {
             bool setDone = false;
             bool paramEmpty = false;

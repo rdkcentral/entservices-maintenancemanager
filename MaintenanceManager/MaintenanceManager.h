@@ -248,7 +248,7 @@ namespace WPEFramework
             bool isWhoAmIEnabled();
             bool knowWhoAmI(string &activation_status);
             bool subscribeToDeviceInitializationEvent();
-            bool setDeviceInitializationContext(JsonObject& joGetResult);
+            bool setDeviceInitializationContext(const JsonObject& joGetResult);
             bool getActivatedStatus(bool &skipFirmwareCheck);
             const string checkActivatedStatus(void);
             bool queryIAuthService();
