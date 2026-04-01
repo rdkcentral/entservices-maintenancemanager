@@ -1492,9 +1492,17 @@ namespace WPEFramework
             if (Utils::IARM::init())
             {
                 IARM_Result_t res;
+                g_unsolicited_complete = true;  // unblocks startMaintenance()
+                g_currentMode = FOREGROUND_MODE; // required for getMaintenanceMode() to return valid response
+                m_notify_status = MAINTENANCE_IDLE; // explicit init so startMaintenance() gate passes
+                MM_LOGINFO("Mark unsolicited as %s, current mode as %s, notify status as %d", (g_unsolicited_complete) ? "complete" : "incomplete", g_currentMode.c_str(), m_notify_status);
+                MM_LOGINFO("Skipping Unsolicited Maintenance (on Boot Maintenance)");
                 // Register for the Maintenance Notification Events
                 IARM_CHECK(IARM_Bus_RegisterEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME, IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE, _MaintenanceMgrEventHandler));
+#if 0
                 maintenanceManagerOnBootup();
+#endif
+                MM_LOGINFO("on Bootup Maintenance skipped successfully");
             }
         }
 
