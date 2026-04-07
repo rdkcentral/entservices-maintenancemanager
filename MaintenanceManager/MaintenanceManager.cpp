@@ -302,8 +302,6 @@ namespace WPEFramework
         string task_names[] = {
 #ifdef ENABLE_RFC_MANAGER
             "rfcMgr",
-#else
-            "RFCbase.sh",
 #endif
             "rdkvfwupgrader",
             "logupload"
