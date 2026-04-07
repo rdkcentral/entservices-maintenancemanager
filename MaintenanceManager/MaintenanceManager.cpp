@@ -306,7 +306,7 @@ namespace WPEFramework
             "RFCbase.sh",
 #endif
             "rdkvfwupgrader",
-            "uploadSTBLogs.sh"
+            "logupload"
         };
 
         static const array<string, 3> kDeviceInitContextKeyVals = {
