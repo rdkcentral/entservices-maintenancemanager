@@ -310,7 +310,6 @@ TEST_F(MaintenanceManagerTest, AbortTask_TaskNotFound) {
 
 TEST_F(MaintenanceManagerTest, AbortTask_RfcMgrTask) {
 #if defined(ENABLE_RFC_MANAGER)
-	#ifdef ENABLE_RFC_MANAGER
     const char* taskname = "rfcMgr";
 
     pid_t child_pid = fork();
@@ -318,7 +317,6 @@ TEST_F(MaintenanceManagerTest, AbortTask_RfcMgrTask) {
     int status;
     waitpid(child_pid, &status, 0);
 #endif
-	#endif
 }
 
 /* --- internetStatusEventHandler ---- */
