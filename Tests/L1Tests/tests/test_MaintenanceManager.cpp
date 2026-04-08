@@ -311,8 +311,16 @@ TEST_F(MaintenanceManagerTest, AbortTask_TaskNotFound) {
 TEST_F(MaintenanceManagerTest, AbortTask_RfcMgrTask) {
 #if defined(ENABLE_RFC_MANAGER)
     const char* taskname = "rfcMgr";
-
+    
     pid_t child_pid = fork();
+    if (child_pid == 0) {
+        execlp(taskname, "sleep", "1000", (char*) NULL);
+        exit(0);
+    }
+
+    sleep(1);
+    int ret = plugin_->callAbortTask(taskname, SIGTERM);
+    EXPECT_EQ(ret, 0);
     kill(child_pid, SIGKILL);
     int status;
     waitpid(child_pid, &status, 0);
