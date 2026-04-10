@@ -1503,7 +1503,7 @@ namespace WPEFramework
                 m_setting.remove("LastSuccessfulCompletionTime");
                 m_setting.setValue("LastSuccessfulCompletionTime", str_successfulTime); // Stamp LastSuccessfulCompletionTime so AS sees maintenance as done
 
-                MM_LOGINFO("Skipping Unsolicited maintenance (on Boot Maintenance): status=%s, LastSuccessfulCompletionTime=%s", m_notify_status.c_str(), str_successfulTime.c_str());
+                MM_LOGINFO("Skipping Unsolicited maintenance (on Boot Maintenance): status=%s, LastSuccessfulCompletionTime=%s", notifyStatusToString(m_notify_status).c_str(), str_successfulTime.c_str());
                 // Register for the Maintenance Notification Events
                 IARM_CHECK(IARM_Bus_RegisterEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME, IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE, _MaintenanceMgrEventHandler));
 #if 0
