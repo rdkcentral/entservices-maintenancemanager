@@ -1492,9 +1492,24 @@ namespace WPEFramework
             if (Utils::IARM::init())
             {
                 IARM_Result_t res;
+                g_unsolicited_complete = true;     // unblocks startMaintenance()
+                g_currentMode = FOREGROUND_MODE;   // required for getMaintenanceMode() to return valid response
+                m_notify_status = MAINTENANCE_COMPLETE; // Set status to MAINTENANCE_COMPLETE
+
+                time_t successfulTime = time(nullptr);
+                tm ltime = *localtime(&successfulTime);
+                time_t epoch_time = mktime(&ltime);
+                string str_successfulTime = to_string(epoch_time);
+                m_setting.remove("LastSuccessfulCompletionTime");
+                m_setting.setValue("LastSuccessfulCompletionTime", str_successfulTime); // Stamp LastSuccessfulCompletionTime so AS sees maintenance as done
+
+                MM_LOGINFO("Skipping Unsolicited maintenance (on Boot Maintenance): status=%s, LastSuccessfulCompletionTime=%s", notifyStatusToString(m_notify_status).c_str(), str_successfulTime.c_str());
                 // Register for the Maintenance Notification Events
                 IARM_CHECK(IARM_Bus_RegisterEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME, IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE, _MaintenanceMgrEventHandler));
+#if 0
                 maintenanceManagerOnBootup();
+#endif
+                MM_LOGINFO("On Bootup Maintenance skipped successfully");
             }
         }
 
