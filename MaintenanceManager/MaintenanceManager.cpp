@@ -300,13 +300,9 @@ namespace WPEFramework
         };
 
         string task_names[] = {
-#ifdef ENABLE_RFC_MANAGER
             "rfcMgr",
-#else
-            "RFCbase.sh",
-#endif
             "rdkvfwupgrader",
-            "uploadSTBLogs.sh"
+            "logupload"
         };
 
         static const array<string, 3> kDeviceInitContextKeyVals = {
@@ -2808,15 +2804,13 @@ namespace WPEFramework
             if (pid_num != -1)
             {
                 /* send the signal to task to terminate */
-#if defined(ENABLE_RFC_MANAGER)
                 if (strstr(taskname, "rfcMgr"))
                 {
                     MM_LOGINFO("Sending SIGUSR1 signal to %s", taskname);
                     k_ret = kill(pid_num, SIGUSR1);
                 }
-                else
-#endif
-                if (strstr(taskname, "rdkvfwupgrader"))
+                
+                else if (strstr(taskname, "rdkvfwupgrader"))
                 {
                     MM_LOGINFO("Sending SIGUSR1 signal to %s", taskname);
                     k_ret = kill(pid_num, SIGUSR1);
