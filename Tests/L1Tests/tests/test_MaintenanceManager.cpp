@@ -648,11 +648,7 @@ TEST_F(MaintenanceManagerTest, startCriticalTasks)
             return system(command);
         }));
 
-#ifdef ENABLE_RFC_MANAGER
     system("echo 'echo RFCMgrContents' >> /usr/bin/rfcMgr");
-#else	
-    system("echo 'echo RFCBaseContents' >> /lib/rdk/RFCbase.sh");
-#endif
     system("echo 'echo XConfImageCheckContents' >> /lib/rdk/xconfImageCheck.sh");
     system("cat /usr/bin/rfcMgr");
     system("cat /lib/rdk/RFCbase.sh");
@@ -661,7 +657,6 @@ TEST_F(MaintenanceManagerTest, startCriticalTasks)
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
     char buffer[256];
-#ifdef ENABLE_RFC_MANAGER
     FILE* rfcscriptLog = popen("cat /opt/logs/rfcscript.log", "r");
     std::string rfcscriptLogContent;
     while (fgets(buffer, sizeof(buffer), rfcscriptLog) != NULL) {
@@ -670,7 +665,6 @@ TEST_F(MaintenanceManagerTest, startCriticalTasks)
     pclose(rfcscriptLog);
     cout << rfcscriptLogContent << endl;
     EXPECT_EQ(rfcscriptLogContent, "RFCMgrContents\n");
-#endif
     memset(buffer, 0, sizeof(buffer));
 
     FILE* swupdateLog = popen("cat /opt/logs/swupdate.log", "r");
