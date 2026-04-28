@@ -579,43 +579,47 @@ namespace WPEFramework
                 }
             }
 
-            /* If all task COMPLETE bits are set but not m_notify_status (last-task timer timeout — no IARM event follows)
-             * publish the status from here. Runs only when the IARM Path already finalized the status (STARTED → COMPLETE/ERROR),
-             * because the check below is gated on m_notify_status == MAINTENANCE_STARTED. 
+            /* Fallback finalization: if all task COMPLETE bits are set and m_notify_status is still MAINTENANCE_STARTED
+             * (eg: after the last-task timer timeout and no final IARM status update arrives) publish the final status from here. 
              */
-            m_statusMutex.lock();
-            if (m_notify_status == MAINTENANCE_STARTED && (g_task_status & TASKS_COMPLETED) == TASKS_COMPLETED)
+            Maint_notify_status_t fallback_status = MAINTENANCE_STARTED;
+            // Critical section to check and compute final maintenance status based on task results if IARM did not finalize.
             {
-                Maint_notify_status_t fallback_status;
-                // All tasks completed successfully but no status update received, likely due to IARM failure. 
-                // Determine the final status based on task results.
-                if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS) 
+                std::lock_guard<std::mutex> guard(m_statusMutex);
+                if (m_notify_status == MAINTENANCE_STARTED && (g_task_status & TASKS_COMPLETED) == TASKS_COMPLETED)
                 {
-                    MM_LOGINFO("Fallback: all tasks succeeded. Setting MAINTENANCE_COMPLETE");
-                    fallback_status = MAINTENANCE_COMPLETE;
+                    // All tasks completed successfully but no status update received via IARM.
+                    // Determine the final status based on task results.
+                    if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS) 
+                    {
+                        MM_LOGINFO("Fallback: all tasks succeeded. Setting MAINTENANCE_COMPLETE");
+                        fallback_status = MAINTENANCE_COMPLETE;
+                    }
+                    // All tasks completed but at least one task was skipped, likely due to Opt-out.
+                    // Use CHECK_STATUS to detect the skip bit correctly (bit 7, not bit 9).
+                    else if (CHECK_STATUS(g_task_status, TASK_SKIPPED))
+                    {
+                        MM_LOGINFO("Fallback: skipped tasks detected. Setting MAINTENANCE_INCOMPLETE");
+                        fallback_status = MAINTENANCE_INCOMPLETE;
+                    }
+                    // At least one task failed, indicating maintenance completed with errors.
+                    else
+                    {
+                        MM_LOGINFO("Fallback: task error detected. Setting MAINTENANCE_ERROR");
+                        fallback_status = MAINTENANCE_ERROR;
+                    }
                 }
-                // All tasks completed but at least one task was skipped, likely due to Opt-out. 
-                // Set status to INCOMPLETE to reflect that maintenance did not fully complete.
-                else if ((g_task_status & MAINTENANCE_TASK_SKIPPED) == MAINTENANCE_TASK_SKIPPED)
-                {
-                    MM_LOGINFO("Fallback: skipped tasks detected. Setting MAINTENANCE_INCOMPLETE");
-                    fallback_status = MAINTENANCE_INCOMPLETE;
-                }
-                // At least one task failed and no tasks are pending, indicating maintenance completed with errors.
-                else
-                {
-                    MM_LOGINFO("Fallback: task error detected. Setting MAINTENANCE_ERROR");
-                    fallback_status = MAINTENANCE_ERROR;
-                }
-
+            }
+            
+            // Notify outside the lock to avoid extended critical section and prevent re-entrancy issues. (COVERITY recommendation)
+            if (fallback_status != MAINTENANCE_STARTED)
+            {
                 if (UNSOLICITED_MAINTENANCE == g_maintenance_type && !g_unsolicited_complete)
                 {
                     g_unsolicited_complete = true;
                 }
-                
-                MaintenanceManager::_instance->onMaintenanceStatusChange(fallback_status);
+                MaintenanceManager::_instance->onMaintenanceStatusChange(fallback_status); // Notify the final maintenance status based on task results
             }
-            m_statusMutex.unlock();
 
             MM_LOGINFO("Worker Thread Completed");
         } /* end of task_execution_thread() */
