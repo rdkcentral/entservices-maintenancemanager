@@ -520,7 +520,22 @@ namespace WPEFramework
                         if (task_status != 0) /* system() call fails */
                         {
                             m_task_map[tasks[i]] = false;
-                            MM_LOGINFO("%s invocation failed with return status %d", tasks[i].c_str(), WEXITSTATUS(task_status));
+                            if (task_status == -1)
+                            {
+                                MM_LOGERR("%s fork/exec failed with errno %d (%s)", tasks[i].c_str(), errno, strerror(errno));
+                            }
+                            else if (WIFEXITED(task_status))
+                            {
+                                MM_LOGINFO("%s exited with status %d", tasks[i].c_str(), WEXITSTATUS(task_status));
+                            }
+                            else if (WIFSIGNALED(task_status))
+                            {
+                                MM_LOGINFO("%s terminated by signal %d", tasks[i].c_str(), WTERMSIG(task_status));
+                            }
+                            else
+                            {
+                                MM_LOGINFO("%s terminated with unknown status %d", tasks[i].c_str(), task_status);
+                            }
                             if (retry_count > 0 && isTaskTimerStarted)
                             {
                                 MM_LOGINFO("Retry %s after %d seconds (%d retry left)\n", tasks[i].c_str(), TASK_RETRY_DELAY, retry_count);
@@ -584,15 +599,16 @@ namespace WPEFramework
             /* Fallback finalization: if all task COMPLETE bits are set and m_notify_status is still MAINTENANCE_STARTED
              * (eg: after the last-task timer timeout and no final IARM status update arrives) publish the final status from here. 
              */
-            Maint_notify_status_t fallback_status = MAINTENANCE_STARTED;
-            bool fallback_should_notify = false;
-            // Critical section to check and compute final maintenance status based on task results if IARM did not finalize.
+            // Critical section to check, compute, and atomically notify final maintenance status.
+            // onMaintenanceStatusChange() writes m_notify_status, so it must be called under m_statusMutex lock
+            // to ensure all m_notify_status updates are protected (consistent with all other call sites).
             {
                 std::lock_guard<std::mutex> guard(m_statusMutex);
                 if (m_notify_status == MAINTENANCE_STARTED && (g_task_status & TASKS_COMPLETED) == TASKS_COMPLETED)
                 {
                     // All tasks are marked complete (success/failure), but no final status update was received via IARM.
-                    // Determine and publish the final status based on task result bits.
+                    // Determine the final status based on task result bits.
+                    Maint_notify_status_t fallback_status = MAINTENANCE_STARTED;
                     if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS) 
                     {
                         MM_LOGINFO("Fallback: all tasks succeeded. Setting MAINTENANCE_COMPLETE");
@@ -611,19 +627,15 @@ namespace WPEFramework
                         MM_LOGINFO("Fallback: task error detected. Setting MAINTENANCE_ERROR");
                         fallback_status = MAINTENANCE_ERROR;
                     }
-                    m_notify_status = fallback_status;
-                    fallback_should_notify = true;
+                    // Atomically update status and notify under the lock.
+                    // This prevents IARM from finalizing again (late IARM sees m_notify_status != MAINTENANCE_STARTED)
+                    // and ensures consistent state visibility to other threads.
+                    if (UNSOLICITED_MAINTENANCE == g_maintenance_type && !g_unsolicited_complete)
+                    {
+                        g_unsolicited_complete = true;
+                    }
+                    MaintenanceManager::_instance->onMaintenanceStatusChange(fallback_status);
                 }
-            }
-            
-            // Notify outside the lock to avoid extended critical section and prevent re-entrancy issues. (COVERITY recommendation)
-            if (fallback_should_notify)
-            {
-                if (UNSOLICITED_MAINTENANCE == g_maintenance_type && !g_unsolicited_complete)
-                {
-                    g_unsolicited_complete = true;
-                }
-                MaintenanceManager::_instance->onMaintenanceStatusChange(fallback_status); // Notify the final maintenance status based on task results
             }
 
             MM_LOGINFO("Worker Thread Completed");
@@ -1125,7 +1137,18 @@ namespace WPEFramework
             rfc_task_status = system(command);
             if (rfc_task_status != 0)
             {
-                MM_LOGINFO("Failed to run %s with %d", RFC_TASK, WEXITSTATUS(rfc_task_status));
+                if (rfc_task_status == -1)
+                {
+                    MM_LOGERR("Failed to fork/exec %s, errno %d (%s)", RFC_TASK, errno, strerror(errno));
+                }
+                else if (WIFEXITED(rfc_task_status))
+                {
+                    MM_LOGINFO("Failed to run %s, exited with status %d", RFC_TASK, WEXITSTATUS(rfc_task_status));
+                }
+                else if (WIFSIGNALED(rfc_task_status))
+                {
+                    MM_LOGINFO("Failed to run %s, terminated by signal %d", RFC_TASK, WTERMSIG(rfc_task_status));
+                }
             }
 
             // Critical Task XConf Image Check
@@ -1134,7 +1157,18 @@ namespace WPEFramework
             xconf_imagecheck_status = system(command);
             if (xconf_imagecheck_status != 0)
             {
-                MM_LOGINFO("Failed to run %s with %d", IMAGE_CHECK_SCRIPT, WEXITSTATUS(xconf_imagecheck_status));
+                if (xconf_imagecheck_status == -1)
+                {
+                    MM_LOGERR("Failed to fork/exec %s, errno %d (%s)", IMAGE_CHECK_SCRIPT, errno, strerror(errno));
+                }
+                else if (WIFEXITED(xconf_imagecheck_status))
+                {
+                    MM_LOGINFO("Failed to run %s, exited with status %d", IMAGE_CHECK_SCRIPT, WEXITSTATUS(xconf_imagecheck_status));
+                }
+                else if (WIFSIGNALED(xconf_imagecheck_status))
+                {
+                    MM_LOGINFO("Failed to run %s, terminated by signal %d", IMAGE_CHECK_SCRIPT, WTERMSIG(xconf_imagecheck_status));
+                }
             }
         }
 
