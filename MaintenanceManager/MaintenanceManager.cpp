@@ -493,51 +493,68 @@ namespace WPEFramework
                 tasks.push_back(task_names_foreground[TASK_LOGUPLOAD].c_str());
             }
 
-            std::unique_lock<std::mutex> lck(m_callMutex);
-            for (i = 0; i < static_cast<int>(tasks.size()) && !m_abort_flag; i++)
             {
-                int task_status = -1;
-                task = tasks[i];
-                currentTask = task;
-                task += " &";
-                task += "\0";
-                if (!m_abort_flag)
+                std::unique_lock<std::mutex> lck(m_callMutex);
+                for (i = 0; i < static_cast<int>(tasks.size()) && !m_abort_flag; i++)
                 {
-                    if (retry_count == TASK_RETRY_COUNT)
+                    int task_status = -1;
+                    task = tasks[i];
+                    currentTask = task;
+                    task += " &";
+                    task += "\0";
+                    if (!m_abort_flag)
                     {
-                        MM_LOGINFO("Starting Timer for %s", currentTask.c_str());
-                        isTaskTimerStarted = task_startTimer();
-                    }
-                    if (isTaskTimerStarted)
-                    {
-                        m_task_map[tasks[i]] = true;
-                        MM_LOGINFO("Starting Task %s", task.c_str());
-                        task_status = system(task.c_str());
-                    }
-                    /* Set task_status purposefully to non-zero value to verify failure logic*/
-                    // task_status = -1;
-                    if (task_status != 0) /* system() call fails */
-                    {
-                        m_task_map[tasks[i]] = false;
-                        MM_LOGINFO("%s invocation failed with return status %d", tasks[i].c_str(), WEXITSTATUS(task_status));
-                        if (retry_count > 0 && isTaskTimerStarted)
+                        if (retry_count == TASK_RETRY_COUNT)
                         {
-                            MM_LOGINFO("Retry %s after %d seconds (%d retry left)\n", tasks[i].c_str(), TASK_RETRY_DELAY, retry_count);
-                            std::this_thread::sleep_for(std::chrono::seconds(TASK_RETRY_DELAY));
-                            i--; /* Decrement iterator to retry the same task again */
-                            retry_count--;
-                            continue;
+                            MM_LOGINFO("Starting Timer for %s", currentTask.c_str());
+                            isTaskTimerStarted = task_startTimer();
                         }
-                        else
+                        if (isTaskTimerStarted)
                         {
-                            MM_LOGINFO("Task Failed");
-                            auto it = task_status_map.find(tasks[i]);
-                            if (it != task_status_map.end())
+                            m_task_map[tasks[i]] = true;
+                            MM_LOGINFO("Starting Task %s", task.c_str());
+                            task_status = system(task.c_str());
+                        }
+                        /* Set task_status purposefully to non-zero value to verify failure logic*/
+                        // task_status = -1;
+                        if (task_status != 0) /* system() call fails */
+                        {
+                            m_task_map[tasks[i]] = false;
+                            MM_LOGINFO("%s invocation failed with return status %d", tasks[i].c_str(), WEXITSTATUS(task_status));
+                            if (retry_count > 0 && isTaskTimerStarted)
                             {
-                                MM_LOGINFO("Setting task as Error");
-                                int complete_status = it->second;
-                                SET_STATUS(g_task_status, complete_status);
+                                MM_LOGINFO("Retry %s after %d seconds (%d retry left)\n", tasks[i].c_str(), TASK_RETRY_DELAY, retry_count);
+                                std::this_thread::sleep_for(std::chrono::seconds(TASK_RETRY_DELAY));
+                                i--; /* Decrement iterator to retry the same task again */
+                                retry_count--;
+                                continue;
                             }
+                            else
+                            {
+                                MM_LOGINFO("Task Failed");
+                                auto it = task_status_map.find(tasks[i]);
+                                if (it != task_status_map.end())
+                                {
+                                    MM_LOGINFO("Setting task as Error");
+                                    int complete_status = it->second;
+                                    SET_STATUS(g_task_status, complete_status);
+                                }
+                                if (task_stopTimer())
+                                {
+                                    MM_LOGINFO("Stopped Timer Successfully");
+                                }
+                                else
+                                {
+                                    MM_LOGERR("task_stopTimer() did not stop the Timer");
+                                }
+                            }
+                        }
+                        else /* system() executes successfully */
+                        {
+                            MM_LOGINFO("Waiting to unlock.. [%d/%d]", i + 1, (int)tasks.size());
+#if !defined(GTEST_ENABLE)
+                            task_thread.wait(lck);
+#endif
                             if (task_stopTimer())
                             {
                                 MM_LOGINFO("Stopped Timer Successfully");
@@ -548,23 +565,8 @@ namespace WPEFramework
                             }
                         }
                     }
-                    else /* system() executes successfully */
-                    {
-                        MM_LOGINFO("Waiting to unlock.. [%d/%d]", i + 1, (int)tasks.size());
-#if !defined(GTEST_ENABLE)
-                        task_thread.wait(lck);
-#endif
-                        if (task_stopTimer())
-                        {
-                            MM_LOGINFO("Stopped Timer Successfully");
-                        }
-                        else
-                        {
-                            MM_LOGERR("task_stopTimer() did not stop the Timer");
-                        }
-                    }
+                    retry_count = TASK_RETRY_COUNT; /* Reset Retry Count for next Task*/
                 }
-                retry_count = TASK_RETRY_COUNT; /* Reset Retry Count for next Task*/
             }
             if (m_abort_flag)
             {
@@ -579,14 +581,6 @@ namespace WPEFramework
                 }
             }
 
-            /* Release m_callMutex before fallback finalization to avoid lock-order reversal
-             * when taking m_statusMutex below. (COVERITY recommendation)
-             */
-            if (lck.owns_lock())
-            {
-                lck.unlock();
-            }
-
             /* Fallback finalization: if all task COMPLETE bits are set and m_notify_status is still MAINTENANCE_STARTED
              * (eg: after the last-task timer timeout and no final IARM status update arrives) publish the final status from here. 
              */
@@ -596,8 +590,8 @@ namespace WPEFramework
                 std::lock_guard<std::mutex> guard(m_statusMutex);
                 if (m_notify_status == MAINTENANCE_STARTED && (g_task_status & TASKS_COMPLETED) == TASKS_COMPLETED)
                 {
-                    // All tasks completed successfully but no status update received via IARM.
-                    // Determine the final status based on task results.
+                    // All tasks are marked complete (success/failure), but no final status update was received via IARM.
+                    // Determine and publish the final status based on task result bits.
                     if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS) 
                     {
                         MM_LOGINFO("Fallback: all tasks succeeded. Setting MAINTENANCE_COMPLETE");
