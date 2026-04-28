@@ -585,6 +585,7 @@ namespace WPEFramework
              * (eg: after the last-task timer timeout and no final IARM status update arrives) publish the final status from here. 
              */
             Maint_notify_status_t fallback_status = MAINTENANCE_STARTED;
+            bool fallback_should_notify = false;
             // Critical section to check and compute final maintenance status based on task results if IARM did not finalize.
             {
                 std::lock_guard<std::mutex> guard(m_statusMutex);
@@ -610,11 +611,13 @@ namespace WPEFramework
                         MM_LOGINFO("Fallback: task error detected. Setting MAINTENANCE_ERROR");
                         fallback_status = MAINTENANCE_ERROR;
                     }
+                    m_notify_status = fallback_status;
+                    fallback_should_notify = true;
                 }
             }
             
             // Notify outside the lock to avoid extended critical section and prevent re-entrancy issues. (COVERITY recommendation)
-            if (fallback_status != MAINTENANCE_STARTED)
+            if (fallback_should_notify)
             {
                 if (UNSOLICITED_MAINTENANCE == g_maintenance_type && !g_unsolicited_complete)
                 {
