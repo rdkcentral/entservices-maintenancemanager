@@ -579,6 +579,14 @@ namespace WPEFramework
                 }
             }
 
+            /* Release m_callMutex before fallback finalization to avoid lock-order reversal
+             * when taking m_statusMutex below. (COVERITY recommendation)
+             */
+            if (lck.owns_lock())
+            {
+                lck.unlock();
+            }
+
             /* Fallback finalization: if all task COMPLETE bits are set and m_notify_status is still MAINTENANCE_STARTED
              * (eg: after the last-task timer timeout and no final IARM status update arrives) publish the final status from here. 
              */
