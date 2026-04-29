@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <errno.h>
+#include <sys/wait.h>
 #include <cstdio>
 #include <regex>
 #include <fstream>
@@ -599,17 +600,18 @@ namespace WPEFramework
             /* Fallback finalization: if all task COMPLETE bits are set and m_notify_status is still MAINTENANCE_STARTED
              * (eg: after the last-task timer timeout and no final IARM status update arrives) publish the final status from here. 
              */
-            // Critical section to check, compute, and atomically notify final maintenance status.
-            // onMaintenanceStatusChange() writes m_notify_status, so it must be called under m_statusMutex lock
-            // to ensure all m_notify_status updates are protected (consistent with all other call sites).
+            // Compute fallback_status and update minimal shared state under the mutex, then emit the
+            // notification outside the lock. This avoids holding m_statusMutex across sendNotify()
+            // (which can block on JSON-RPC and risks lock inversion if notification re-enters code
+            // that also wants m_statusMutex).
+            Maint_notify_status_t fallback_status = MAINTENANCE_IDLE; // IDLE means: no fallback needed
             {
                 std::lock_guard<std::mutex> guard(m_statusMutex);
                 if (m_notify_status == MAINTENANCE_STARTED && (g_task_status & TASKS_COMPLETED) == TASKS_COMPLETED)
                 {
                     // All tasks are marked complete (success/failure), but no final status update was received via IARM.
                     // Determine the final status based on task result bits.
-                    Maint_notify_status_t fallback_status = MAINTENANCE_STARTED;
-                    if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS) 
+                    if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS)
                     {
                         MM_LOGINFO("Fallback: all tasks succeeded. Setting MAINTENANCE_COMPLETE");
                         fallback_status = MAINTENANCE_COMPLETE;
@@ -627,15 +629,26 @@ namespace WPEFramework
                         MM_LOGINFO("Fallback: task error detected. Setting MAINTENANCE_ERROR");
                         fallback_status = MAINTENANCE_ERROR;
                     }
-                    // Atomically update status and notify under the lock.
-                    // This prevents IARM from finalizing again (late IARM sees m_notify_status != MAINTENANCE_STARTED)
-                    // and ensures consistent state visibility to other threads.
+                    // Update shared state under the lock so IARM sees m_notify_status != MAINTENANCE_STARTED
+                    // and skips its own finalization if it arrives late.
+                    m_notify_status = fallback_status;
                     if (UNSOLICITED_MAINTENANCE == g_maintenance_type && !g_unsolicited_complete)
                     {
                         g_unsolicited_complete = true;
                     }
-                    MaintenanceManager::_instance->onMaintenanceStatusChange(fallback_status);
                 }
+            }
+            // Emit the notification outside the critical section to avoid holding m_statusMutex
+            // across a potentially blocking sendNotify() call.
+            if (fallback_status != MAINTENANCE_IDLE)
+            {
+                JsonObject params;
+                params["maintenanceStatus"] = notifyStatusToString(fallback_status);
+                MM_LOGINFO("Fallback: publishing final status %s", notifyStatusToString(fallback_status).c_str());
+                sendNotify(EVT_ONMAINTENANCSTATUSCHANGE, params);
+#if defined(ENABLE_JOURNAL_LOGGING)
+                MM_SEND_NOTIFY(EVT_ONMAINTENANCSTATUSCHANGE, params);
+#endif
             }
 
             MM_LOGINFO("Worker Thread Completed");
@@ -1899,17 +1912,30 @@ namespace WPEFramework
                         }
 
                         MM_LOGINFO("ENDING MAINTENANCE CYCLE");
+                        // Release m_statusMutex before joining task_execution_thread.
+                        m_statusMutex.unlock();
                         if (m_thread.joinable())
                         {
                             m_thread.join();
                             MM_LOGINFO("Thread joined successfully");
                         }
+                        // Re-acquire before writing shared state and calling onMaintenanceStatusChange.
+                        m_statusMutex.lock();
 
-                        if (g_maintenance_type == UNSOLICITED_MAINTENANCE && !g_unsolicited_complete)
+                        // Guard against duplicate notification
+                        if (m_notify_status != MAINTENANCE_STARTED)
                         {
-                            g_unsolicited_complete = true;
+                            MM_LOGINFO("IARM: status already finalized by fallback (%d), skipping duplicate notify", m_notify_status);
                         }
-                        MaintenanceManager::_instance->onMaintenanceStatusChange(notify_status);
+                        else
+                        {
+                            if (g_maintenance_type == UNSOLICITED_MAINTENANCE && !g_unsolicited_complete)
+                            {
+                                g_unsolicited_complete = true;
+                            }
+                            MM_LOGINFO("IARM: publishing final status=%d", notify_status);
+                            MaintenanceManager::_instance->onMaintenanceStatusChange(notify_status);
+                        }
                     }
                     else
                     {
