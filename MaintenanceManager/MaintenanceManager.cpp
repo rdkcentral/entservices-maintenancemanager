@@ -2856,11 +2856,16 @@ namespace WPEFramework
                     MM_LOGERR("task_stopTimer() did not stop the Timer");
                 }
                 task_thread.notify_one();
+                // Release m_statusMutex before joining task_execution_thread to avoid deadlock:
+                // the thread's fallback finalization block also acquires m_statusMutex after waking.
+                m_statusMutex.unlock();
                 if (m_thread.joinable())
                 {
                     m_thread.join();
                     MM_LOGINFO("Thread joined successfully");
                 }
+                // Re-acquire before writing shared state and notifying.
+                m_statusMutex.lock();
                 if (UNSOLICITED_MAINTENANCE == g_maintenance_type && !g_unsolicited_complete)
                 {
                     g_unsolicited_complete = true;
