@@ -1460,11 +1460,12 @@ namespace WPEFramework
             if (!network_available)
             {
                 int retry_count = 0;
-                while (retry_count < MAX_NETWORK_RETRIES)
+                while (retry_count < MAX_NETWORK_RETRIES && !m_abort_flag)
                 {
                     MM_LOGINFO("Network not available. Sleeping for %d seconds", NETWORK_RETRY_INTERVAL);
                     sleep(NETWORK_RETRY_INTERVAL);
                     MM_LOGINFO("Network retries [%d/%d]", ++retry_count, MAX_NETWORK_RETRIES);
+                    if (m_abort_flag) break;
                     network_available = checkNetwork();
                     if (network_available)
                     {
@@ -1616,6 +1617,16 @@ namespace WPEFramework
             MM_LOGINFO("Timer Deleted on Deinitialization.");
 #if defined(USE_IARMBUS) || defined(USE_IARM_BUS)
             stopMaintenanceTasks();
+            // Ensure the task thread is dead before DeinitializeIARM() nullifies _instance.
+            // stopMaintenanceTasks() is a no-op when status != MAINTENANCE_STARTED (e.g. thread
+            // is still sleeping in isDeviceOnline), so we force-abort and join here.
+            m_abort_flag = true;
+            task_thread.notify_all();
+            if (m_thread.joinable())
+            {
+                m_thread.join();
+                MM_LOGINFO("Deinitialize: task thread joined.");
+            }
             DeinitializeIARM();
 #endif /* defined(USE_IARMBUS) || defined(USE_IARM_BUS) */
 
