@@ -19,6 +19,8 @@ using namespace WPEFramework;
 */
 #define MAINTENANCEMANAGER_CALLSIGN  _T("org.rdk.MaintenanceManager")
 #define MAINTENANCEMANAGERL2TEST_CALLSIGN _T("L2tests.1")
+#define SERVICE_TRANSITION_RETRY_COUNT 20
+#define SERVICE_TRANSITION_RETRY_SLEEP_SEC 2
 
 
 
@@ -28,6 +30,10 @@ protected:
 
 public:
     MaintenanceManagerTest();
+
+private:
+    bool EnsureServiceActive(const char* callsign);
+    void BestEffortDeactivate(const char* callsign);
 };
 
 
@@ -50,21 +56,45 @@ MaintenanceManagerTest::MaintenanceManagerTest() : L2TestMocks() {
     }
 
     IARM_EventHandler_t               controlEventHandler_;
-    uint32_t status = Core::ERROR_GENERAL;
-    status = ActivateService("org.rdk.MaintenanceManager");
-    EXPECT_EQ(Core::ERROR_NONE, status);
-    status =ActivateService("org.rdk.Network");
-    EXPECT_EQ(Core::ERROR_NONE, status);
-    status =ActivateService("org.rdk.SecManager");
-    EXPECT_EQ(Core::ERROR_NONE, status);
-    status =ActivateService("org.rdk.AuthService");
-    EXPECT_EQ(Core::ERROR_NONE, status);
+    EXPECT_TRUE(EnsureServiceActive("org.rdk.MaintenanceManager"));
+    EXPECT_TRUE(EnsureServiceActive("org.rdk.Network"));
+    EXPECT_TRUE(EnsureServiceActive("org.rdk.SecManager"));
+    EXPECT_TRUE(EnsureServiceActive("org.rdk.AuthService"));
 }
 
 MaintenanceManagerTest::~MaintenanceManagerTest() {
-    uint32_t status = Core::ERROR_GENERAL;
+    JsonObject params, results;
+    InvokeServiceMethod("org.rdk.MaintenanceManager", "stopMaintenance", params, results);
+
     sleep(6);
-    status = DeactivateService("org.rdk.MaintenanceManager");
+    BestEffortDeactivate("org.rdk.AuthService");
+    BestEffortDeactivate("org.rdk.SecManager");
+    BestEffortDeactivate("org.rdk.Network");
+    BestEffortDeactivate("org.rdk.MaintenanceManager");
+}
+
+bool MaintenanceManagerTest::EnsureServiceActive(const char* callsign) {
+    for (int attempt = 0; attempt < SERVICE_TRANSITION_RETRY_COUNT; ++attempt) {
+        uint32_t status = ActivateService(callsign);
+        if (status == Core::ERROR_NONE) {
+            return true;
+        }
+
+        // Let controller/plugin state transitions settle before retrying.
+        sleep(SERVICE_TRANSITION_RETRY_SLEEP_SEC);
+    }
+
+    return false;
+}
+
+void MaintenanceManagerTest::BestEffortDeactivate(const char* callsign) {
+    for (int attempt = 0; attempt < SERVICE_TRANSITION_RETRY_COUNT; ++attempt) {
+        uint32_t status = DeactivateService(callsign);
+        if (status == Core::ERROR_NONE) {
+            return;
+        }
+        sleep(SERVICE_TRANSITION_RETRY_SLEEP_SEC);
+    }
 }
 
 TEST_F(MaintenanceManagerTest,Unsolicited_Maintenance)
