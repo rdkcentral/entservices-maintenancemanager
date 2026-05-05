@@ -208,6 +208,16 @@ TEST_F(MaintenanceManagerTest,setMaintenanceMode_json_rpc)
 TEST_F(MaintenanceManagerTest, startMaintenance_active_maintenance)
 {
     JsonObject  params1, results1;
+
+    // Wait for the bootup (unsolicited) maintenance to reach STARTED state.
+    // The task thread must pass isDeviceOnline (~30s network retry) and WhoAmI before
+    // emitting MAINTENANCE_STARTED. Poll so the test is not sensitive to exact timing.
+    for (int i = 0; i < 25; ++i) {
+        uint32_t s = InvokeServiceMethod("org.rdk.MaintenanceManager", "getMaintenanceActivityStatus", params1, results1);
+        if (s == Core::ERROR_NONE && results1["maintenanceStatus"].String() == "MAINTENANCE_STARTED") break;
+        sleep(2);
+    }
+
     uint32_t status = InvokeServiceMethod("org.rdk.MaintenanceManager", "startMaintenance", params1, results1);
     ASSERT_EQ(status, Core::ERROR_GENERAL);
     ASSERT_EQ(results1["success"].Boolean(), false);
@@ -222,7 +232,16 @@ TEST_F(MaintenanceManagerTest, Solicited_maintenance)
 {
     uint32_t status = Core::ERROR_GENERAL;
     JsonObject params1, results1;
-    sleep(20);
+
+    // Wait for the bootup (unsolicited) maintenance to reach STARTED state before stopping it.
+    // The task thread needs ~30s (network retry sleep) + WhoAmI time before emitting STARTED.
+    for (int i = 0; i < 25; ++i) {
+        uint32_t s = InvokeServiceMethod("org.rdk.MaintenanceManager", "getMaintenanceActivityStatus", params1, results1);
+        if (s == Core::ERROR_NONE && results1["maintenanceStatus"].String() == "MAINTENANCE_STARTED") break;
+        sleep(2);
+    }
+    sleep(5);
+
     status = InvokeServiceMethod("org.rdk.MaintenanceManager","stopMaintenance",params1, results1);
     ASSERT_EQ(results1["success"].Boolean(), true);
     ASSERT_EQ(status, Core::ERROR_NONE);

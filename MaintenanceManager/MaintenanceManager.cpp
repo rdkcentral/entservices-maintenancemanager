@@ -1245,6 +1245,8 @@ namespace WPEFramework
                     if ((getServiceState(m_service, "org.rdk.AuthService", state) != Core::ERROR_NONE) || (state != PluginHost::IShell::state::ACTIVATED))
                     {
                         sleep(10);
+                        // Allow Deinitialize() to interrupt this wait via the abort flag.
+                        if (m_abort_flag) return ret_status;
                         i++;
                         MM_LOGINFO("AuthService retries [%d/4]", i);
                     }
@@ -1252,7 +1254,7 @@ namespace WPEFramework
                     {
                         break;
                     }
-                } while (i < MAX_ACTIVATION_RETRIES);
+                } while (i < MAX_ACTIVATION_RETRIES && !m_abort_flag);
 
                 if (state != PluginHost::IShell::state::ACTIVATED)
                 {

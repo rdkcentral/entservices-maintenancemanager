@@ -22,6 +22,7 @@
 
 #include <stdint.h>
 #include <thread>
+#include <atomic>
 #include <map>
 #include <time.h>
 #include <signal.h>
@@ -204,7 +205,7 @@ namespace WPEFramework
             Maint_notify_status_t m_notify_status;
             Maintenance_Type_t g_maintenance_type;
             static cSettings m_setting;
-            bool m_abort_flag;
+            std::atomic<bool> m_abort_flag;
             uint16_t g_task_status;
             bool g_unsolicited_complete;
             bool g_listen_to_nwevents = false;
