@@ -417,7 +417,12 @@ namespace WPEFramework
                         MM_LOGINFO("knowWhoAmI() returned false and Device is not already Activated");
                         g_listen_to_deviceContextUpdate = true;
                         MM_LOGINFO("Waiting for onDeviceInitializationContextUpdate event");
-                        task_thread.wait(wailck, [this]{ return !g_listen_to_deviceContextUpdate; });
+                        task_thread.wait(wailck, [this]{ return !g_listen_to_deviceContextUpdate || m_abort_flag; });
+                        if (m_abort_flag)
+                        {
+                            MM_LOGINFO("task_execution_thread: abort flag set while waiting for deviceContextUpdate, exiting");
+                            return;
+                        }
                     }
                     else if (!internetConnectStatus && activation_status == "activated")
                     {
@@ -739,6 +744,8 @@ namespace WPEFramework
                     {
                         MM_LOGINFO("%s is not active. Retry after %d seconds", secMgr_callsign, SECMGR_RETRY_INTERVAL);
                         std::this_thread::sleep_for(std::chrono::seconds(SECMGR_RETRY_INTERVAL));
+                        // Exit the retry loop immediately if Deinitialize() has set the abort flag.
+                        if (m_abort_flag) return false;
                     }
                     else
                     {
