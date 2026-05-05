@@ -64,7 +64,12 @@ MaintenanceManagerTest::MaintenanceManagerTest() : L2TestMocks() {
 
 MaintenanceManagerTest::~MaintenanceManagerTest() {
     JsonObject params, results;
-    InvokeServiceMethod("org.rdk.MaintenanceManager", "stopMaintenance", params, results);
+    // Best-effort stop; ignore errors (maintenance may not have been started)
+    try {
+        InvokeServiceMethod("org.rdk.MaintenanceManager", "stopMaintenance", params, results);
+    } catch (...) {
+        // Silently ignore stop failures during cleanup
+    }
 
     sleep(6);
     BestEffortDeactivate("org.rdk.AuthService");
