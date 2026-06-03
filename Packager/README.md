@@ -7,7 +7,7 @@ It is built as a shared plugin module and uses libopkg integration for package o
 
 ## Plugin Identity and Runtime Model
 
-- Callsign: org.rdk.Packager
+- Callsign: not explicitly declared in Packager.conf.in or Packager.config templates
 - Hosting model: Thunder plugin shared library
 - Runtime mode and autostart behavior are controlled by plugin config and CMake options
 
