@@ -76,6 +76,11 @@ protected:
 
         p_wrapsImplMock  = new testing::NiceMock <WrapsImplMock>;
         Wraps::setImpl(p_wrapsImplMock);
+
+	plugin_->m_setting.remove("LastSuccessfulCompletionTime");
+        plugin_->m_setting.remove("LastMaintenanceStatus");
+        /* Remove any leftover previousreboot.info from prior tests */
+        remove("/opt/secure/reboot/previousreboot.info");
     }
 
     virtual ~MaintenanceManagerTest() override
@@ -1679,6 +1684,100 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_InitializesCorrectly1)
     EXPECT_FALSE(plugin_->m_abort_flag);
     EXPECT_FALSE(plugin_->g_unsolicited_complete);
 
+}
+
+TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_SkipsUnsolicitedMaintenanceWhenRebootHistoryMatches)
+{
+    plugin_->m_service = &service_;
+    Plugin::MaintenanceManager::_instance = &(*plugin_);
+
+    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
+    plugin_->m_setting.setValue("LastMaintenanceStatus", "MAINTENANCE_COMPLETE");
+    /* Write previousreboot.info as reboot-manager would after a maintenance reboot */
+    {
+        system("mkdir -p /opt/secure/reboot");
+        FILE *fp = fopen("/opt/secure/reboot/previousreboot.info", "w");
+        if (fp) {
+            fprintf(fp, "{\n");
+            fprintf(fp, "\"timestamp\":\"Mon Jan 01 00:00:00 UTC 2024\",\n");
+            fprintf(fp, "\"source\":\"PwrMgr\",\n");
+            fprintf(fp, "\"reason\":\"MAINTENANCE_REBOOT\",\n");
+            fprintf(fp, "\"customReason\":\"MAINTENANCE_REBOOT\",\n");
+            fprintf(fp, "\"otherReason\":\"Scheduled maintenance\"\n");
+            fprintf(fp, "}\n");
+            fclose(fp);
+        }
+    }
+
+    plugin_->maintenanceManagerOnBootup();
+
+    EXPECT_EQ(plugin_->g_currentMode, FOREGROUND_MODE);
+    EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_COMPLETE);
+    EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
+    EXPECT_TRUE(plugin_->g_unsolicited_complete);
+    remove("/opt/secure/reboot/previousreboot.info");
+}
+
+TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMaintenanceStatusIsMissing)
+{
+    plugin_->m_service = &service_;
+    Plugin::MaintenanceManager::_instance = &(*plugin_);
+
+    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
+    /* Write previousreboot.info - reboot reason matches, but status key is missing */
+    {
+        system("mkdir -p /opt/secure/reboot");
+        FILE *fp = fopen("/opt/secure/reboot/previousreboot.info", "w");
+        if (fp) {
+            fprintf(fp, "{\n");
+            fprintf(fp, "\"timestamp\":\"Mon Jan 01 00:00:00 UTC 2024\",\n");
+            fprintf(fp, "\"source\":\"PwrMgr\",\n");
+            fprintf(fp, "\"reason\":\"MAINTENANCE_REBOOT\",\n");
+            fprintf(fp, "\"customReason\":\"MAINTENANCE_REBOOT\",\n");
+            fprintf(fp, "\"otherReason\":\"Scheduled maintenance\"\n");
+            fprintf(fp, "}\n");
+            fclose(fp);
+        }
+    }
+
+    plugin_->maintenanceManagerOnBootup();
+
+    EXPECT_EQ(plugin_->g_currentMode, FOREGROUND_MODE);
+    EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_IDLE);
+    EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
+    EXPECT_FALSE(plugin_->g_unsolicited_complete);
+    remove("/opt/secure/reboot/previousreboot.info");
+}
+
+TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMaintenanceStatusIsNotComplete)
+{
+    plugin_->m_service = &service_;
+    Plugin::MaintenanceManager::_instance = &(*plugin_);
+
+    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
+    plugin_->m_setting.setValue("LastMaintenanceStatus", "MAINTENANCE_IDLE");
+    {
+        system("mkdir -p /opt/secure/reboot");
+        FILE *fp = fopen("/opt/secure/reboot/previousreboot.info", "w");
+        if (fp) {
+            fprintf(fp, "{\n");
+            fprintf(fp, "\"timestamp\":\"Mon Jan 01 00:00:00 UTC 2024\",\n");
+            fprintf(fp, "\"source\":\"PwrMgr\",\n");
+            fprintf(fp, "\"reason\":\"MAINTENANCE_REBOOT\",\n");
+            fprintf(fp, "\"customReason\":\"MAINTENANCE_REBOOT\",\n");
+            fprintf(fp, "\"otherReason\":\"Scheduled maintenance\"\n");
+            fprintf(fp, "}\n");
+            fclose(fp);
+        }
+    }
+
+    plugin_->maintenanceManagerOnBootup();
+
+    EXPECT_EQ(plugin_->g_currentMode, FOREGROUND_MODE);
+    EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_IDLE);
+    EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
+    EXPECT_FALSE(plugin_->g_unsolicited_complete);
+    remove("/opt/secure/reboot/previousreboot.info");
 }
 
 TEST_F(MaintenanceManagerTest, InitializeIARM_RegistersEventAndBootsUp) {
