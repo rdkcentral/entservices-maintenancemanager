@@ -3,8 +3,8 @@
 ## Scope and Provenance
 
 - Repository: rdkcentral/entservices-maintenancemanager
-- Branch analyzed: topic/RDKEMW-18323
-- Commit analyzed: 45480b8
+- Baseline branch: develop
+- Baseline revision: repository state at time of OpenSpec onboarding (see git history for exact commit)
 - Analysis scope: MaintenanceManager plugin only
 - Out-of-scope by design: Packager plugin internals, except for build/scope boundary context
 
