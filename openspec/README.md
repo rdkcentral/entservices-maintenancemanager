@@ -62,6 +62,23 @@ This directory is the OpenSpec source of truth for architecture, lifecycle, and 
 - Ensure code, docs, and OpenSpec artifacts agree.
 - Archive completed changes using OpenSpec archive workflow.
 
+## Context Selection Policy
+
+- Treat OpenSpec as the first context layer and load only the smallest relevant doc set before reading implementation files.
+- For repository documentation, prefer the nearest matching README plus any directly relevant docs under openspec/ and .github/.
+- If a top-level docs/ directory is introduced, treat docs/** as a first-class documentation source but still load only the nearest matching files.
+- For code context, start from the owning plugin or helper instead of scanning the whole repository.
+- For tests, prefer the nearest L1 or L2 files that exercise the touched behavior rather than loading all tests.
+- For CI and automation, read only the workflows or scripts directly involved in build, test, release, or compliance for the task.
+- Keep context windows small by reusing the same evidence set across proposal, design, implementation, validation, and archive steps.
+
+### Recommended Context Buckets
+
+- Documentation: README.md, component README files, openspec/**, .github/agents/README.md, .github/skills/README.md, and docs/** if present.
+- Production code: MaintenanceManager/**, Packager/**, helpers/**, and only the narrow CMake/config files relevant to the task.
+- Tests: Tests/L1Tests/**, Tests/L2Tests/**, Tests/README.md, and test CMake files when test execution or enablement changes.
+- CI and workflow: .github/workflows/**, .github/instructions/**, .github/copilot-instructions.md, and build scripts such as build_dependencies.sh and cov_build.sh when applicable.
+
 ## OpenSpec and Repository Documentation Sync Rules
 
 - If code changes behavior, update OpenSpec and repo docs in the same effort.
