@@ -85,7 +85,7 @@ using namespace std;
 
 #define LAST_MAINTENANCE_STATUS_KEY "LastMaintenanceStatus"
 #define MAINTENANCE_REBOOT_REASON "MAINTENANCE_REBOOT"
-#define PREVIOUS_REBOOT_INFO_FILE "/opt/secure/reboot/previousreboot.info"
+#define REBOOT_REASON_KEY "RebootReason"
 
 enum TaskIndices {
     TASK_RFC = 0,
@@ -1122,42 +1122,29 @@ namespace WPEFramework
             return false;
         }
 
-	string MaintenanceManager::getLastRebootReason()
+        string MaintenanceManager::getLastRebootReason()
         {
-            string lastRebootReason = "";
+            string lastRebootReason = m_setting.getValue(REBOOT_REASON_KEY).String();
 
-            FILE *fp = fopen(PREVIOUS_REBOOT_INFO_FILE, "r");
-            if (fp)
+            if (!lastRebootReason.empty())
             {
-                char buf[512] = {0};
-                size_t n = fread(buf, 1, sizeof(buf) - 1, fp);
-                fclose(fp);
-                if (n > 0)
-                {
-                    /* Extract "reason" from the JSON written by reboot-manager */
-                    const string json(buf, n);
-                    const string pattern = "\"reason\":\"";
-                    size_t pos = json.find(pattern);
-                    if (pos != string::npos)
-                    {
-                        pos += pattern.size();
-                        size_t end = json.find('"', pos);
-                        if (end != string::npos)
-                        {
-                            lastRebootReason = json.substr(pos, end - pos);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                MM_LOGWARN("Failed to open %s to read last reboot reason", PREVIOUS_REBOOT_INFO_FILE);
+                MM_LOGINFO("Last reboot reason read from %s: %s", MAINTENANCE_MGR_RECORD_FILE, lastRebootReason.c_str());
+                return lastRebootReason;
             }
 
-            MM_LOGINFO("Last reboot reason: %s", lastRebootReason.empty() ? "N/A" : lastRebootReason.c_str());
+            MM_LOGWARN("Failed to read reboot reason from %s", MAINTENANCE_MGR_RECORD_FILE);
             return lastRebootReason;
         }
 
+        bool MaintenanceManager::skipUnsolicitedMaintenanceAtBoot(const string &lastRebootReason, const string &lastMaintenanceStatus)
+        {
+            MM_LOGINFO("Boot maintenance history: lastMaintenanceStatus=%s lastRebootReason=%s",
+                lastMaintenanceStatus.empty() ? "N/A" : lastMaintenanceStatus.c_str(),
+                lastRebootReason.empty() ? "N/A" : lastRebootReason.c_str());
+
+            return (lastMaintenanceStatus == "MAINTENANCE_COMPLETE") &&
+                   (lastRebootReason == MAINTENANCE_REBOOT_REASON);
+        }
         /**
          * @brief Checks the activation status of the device.
          *
@@ -1625,17 +1612,18 @@ namespace WPEFramework
             MaintenanceManager::m_abort_flag = false;
             MaintenanceManager::g_unsolicited_complete = false;
 
+            const string lastMaintenanceStatus = m_setting.getValue(LAST_MAINTENANCE_STATUS_KEY).String();
             const string lastRebootReason = getLastRebootReason();
-            if (skipUnsolicitedMaintenanceAtBoot(lastRebootReason))
+            if (skipUnsolicitedMaintenanceAtBoot(lastRebootReason, lastMaintenanceStatus))
             {
-                MM_LOGINFO("Skipping unsolicited maintenance at boot because previous reboot reason is maintenance reboot and previous maintenance status is complete");
+                MM_LOGINFO("Skipping unsolicited maintenance at boot because previous maintenance status is complete and reboot reason is maintenance reboot");
                 m_statusMutex.lock();
                 MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_COMPLETE);
                 m_statusMutex.unlock();
                 MaintenanceManager::g_unsolicited_complete = true;
                 return;
             }
-            
+
 	    /* we post just to tell that we are in idle at this moment */
             m_statusMutex.lock();
             MaintenanceManager::_instance->onMaintenanceStatusChange(m_notify_status);
@@ -2446,22 +2434,6 @@ namespace WPEFramework
             {
                 return false;
             }
-        }
-
-        bool MaintenanceManager::skipUnsolicitedMaintenanceAtBoot(const string &lastRebootReason)
-        {
-            string lastMaintenanceStatus;
-            const bool haveLastMaintenanceStatus = parseConfigFile(MAINTENANCE_MGR_RECORD_FILE, LAST_MAINTENANCE_STATUS_KEY, lastMaintenanceStatus);
-            const bool haveLastRebootReason = !lastRebootReason.empty();
-
-            MM_LOGINFO("Boot maintenance history: lastMaintenanceStatus=%s lastRebootReason=%s",
-                    haveLastMaintenanceStatus ? lastMaintenanceStatus.c_str() : "N/A",
-                    haveLastRebootReason ? lastRebootReason.c_str() : "N/A");
-
-            return haveLastMaintenanceStatus &&
-                    (lastMaintenanceStatus == "MAINTENANCE_COMPLETE") &&
-                    haveLastRebootReason &&
-                    (lastRebootReason == MAINTENANCE_REBOOT_REASON);
         }
 
         /*
