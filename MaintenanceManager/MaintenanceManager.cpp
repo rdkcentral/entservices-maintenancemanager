@@ -1126,23 +1126,23 @@ namespace WPEFramework
         {
             string lastRebootReason;
 
-            if (Utils::fileExists(MAINTENANCE_REBOOT_FLAG_FILE))
+            if (Utils::fileExists(MAINTENANCE_REBOOT_FLAG))
             {
                 lastRebootReason = MAINTENANCE_REBOOT_REASON;
-                MM_LOGINFO("Maintenance reboot flag found: %s", MAINTENANCE_REBOOT_FLAG_FILE);
+                MM_LOGINFO("Maintenance reboot flag found: %s", MAINTENANCE_REBOOT_FLAG);
 
-                if (remove(MAINTENANCE_REBOOT_FLAG_FILE) == 0)
+                if (remove(MAINTENANCE_REBOOT_FLAG) == 0)
                 {
-                    MM_LOGINFO("Maintenance reboot flag cleared after read: %s", MAINTENANCE_REBOOT_FLAG_FILE);
+                    MM_LOGINFO("Maintenance reboot flag cleared after read: %s", MAINTENANCE_REBOOT_FLAG);
                 }
                 else
                 {
-                    MM_LOGWARN("Failed to clear maintenance reboot flag %s errno=%d", MAINTENANCE_REBOOT_FLAG_FILE, errno);
+                    MM_LOGWARN("Failed to clear maintenance reboot flag %s errno=%d", MAINTENANCE_REBOOT_FLAG, errno);
                 }
             }
             else
             {
-                MM_LOGINFO("Maintenance reboot flag not present: %s", MAINTENANCE_REBOOT_FLAG_FILE);
+                MM_LOGINFO("Maintenance reboot flag not present: %s", MAINTENANCE_REBOOT_FLAG);
             }
 
             return lastRebootReason;
