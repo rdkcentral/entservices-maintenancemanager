@@ -482,7 +482,10 @@ namespace WPEFramework
             {
                 tasks.push_back(task_names_foreground[TASK_RFC].c_str());
                 tasks.push_back(task_names_foreground[TASK_SWUPDATE].c_str());
+			}
 
+            std::unique_lock<std::mutex> lck(m_callMutex);
+            for (i = 0; i < static_cast<int>(tasks.size()) && !m_abort_flag; i++)
             {
                 int task_status = -1;
                 task = tasks[i];
