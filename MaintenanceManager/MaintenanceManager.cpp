@@ -85,7 +85,7 @@ using namespace std;
 
 #define LAST_MAINTENANCE_STATUS_KEY "LastMaintenanceStatus"
 #define MAINTENANCE_REBOOT_REASON "MAINTENANCE_REBOOT"
-#define REBOOT_REASON_KEY "RebootReason"
+#define MAINTENANCE_REBOOT_FLAG "/opt/secure/reboot/maintenance_reboot"
 
 enum TaskIndices {
     TASK_RFC = 0,
@@ -1124,15 +1124,27 @@ namespace WPEFramework
 
         string MaintenanceManager::getLastRebootReason()
         {
-            string lastRebootReason = m_setting.getValue(REBOOT_REASON_KEY).String();
+            string lastRebootReason;
 
-            if (!lastRebootReason.empty())
+            if (Utils::fileExists(MAINTENANCE_REBOOT_FLAG_FILE))
             {
-                MM_LOGINFO("Last reboot reason read from %s: %s", MAINTENANCE_MGR_RECORD_FILE, lastRebootReason.c_str());
-                return lastRebootReason;
+                lastRebootReason = MAINTENANCE_REBOOT_REASON;
+                MM_LOGINFO("Maintenance reboot flag found: %s", MAINTENANCE_REBOOT_FLAG_FILE);
+
+                if (remove(MAINTENANCE_REBOOT_FLAG_FILE) == 0)
+                {
+                    MM_LOGINFO("Maintenance reboot flag cleared after read: %s", MAINTENANCE_REBOOT_FLAG_FILE);
+                }
+                else
+                {
+                    MM_LOGWARN("Failed to clear maintenance reboot flag %s errno=%d", MAINTENANCE_REBOOT_FLAG_FILE, errno);
+                }
+            }
+            else
+            {
+                MM_LOGINFO("Maintenance reboot flag not present: %s", MAINTENANCE_REBOOT_FLAG_FILE);
             }
 
-            MM_LOGWARN("Failed to read reboot reason from %s", MAINTENANCE_MGR_RECORD_FILE);
             return lastRebootReason;
         }
 
