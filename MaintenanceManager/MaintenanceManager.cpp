@@ -85,7 +85,7 @@ using namespace std;
 
 enum TaskIndices {
     TASK_RFC = 0,
-    TASK_SWUPDATE,
+    TASK_SWUPDATE
 };
 
 /**
@@ -158,6 +158,8 @@ bool checkValidOptOutModes(string OptoutModes)
  * @return A string that represents the given module status:
  *         - "MAINTENANCE_RFC_COMPLETE" for MAINT_RFC_COMPLETE
  *         - "MAINTENANCE_RFC_ERROR" for MAINT_RFC_ERROR
+ *         - "MAINTENANCE_LOGUPLOAD_COMPLETE" for MAINT_LOGUPLOAD_COMPLETE
+ *         - "MAINTENANCE_LOGUPLOAD_ERROR" for MAINT_LOGUPLOAD_ERROR
  *         - "MAINTENANCE_FWDOWNLOAD_COMPLETE" for MAINT_FWDOWNLOAD_COMPLETE
  *         - "MAINTENANCE_FWDOWNLOAD_ERROR" for MAINT_FWDOWNLOAD_ERROR
  *         - "MAINTENANCE_REBOOT_REQUIRED" for MAINT_REBOOT_REQUIRED
@@ -175,6 +177,12 @@ string moduleStatusToString(IARM_Maint_module_status_t &status)
             break;
         case MAINT_RFC_ERROR:
             ret_status = "MAINTENANCE_RFC_ERROR";
+            break;
+        case MAINT_LOGUPLOAD_COMPLETE:
+            ret_status = "MAINTENANCE_LOGUPLOAD_COMPLETE";
+            break;
+        case MAINT_LOGUPLOAD_ERROR:
+            ret_status = "MAINTENANCE_LOGUPLOAD_ERROR";
             break;
         case MAINT_FWDOWNLOAD_COMPLETE:
             ret_status = "MAINTENANCE_FWDOWNLOAD_COMPLETE";
@@ -271,19 +279,19 @@ namespace WPEFramework
 
         string task_names_foreground[] = {
             string(TASK_SCRIPT) + " " + task_param[TASK_RFC],
-            string(TASK_SCRIPT) + " " + task_param[TASK_SWUPDATE],
+            string(TASK_SCRIPT) + " " + task_param[TASK_SWUPDATE]
         };
 
         vector<string> tasks;
 
         const int task_complete_status[] = {
             RFC_COMPLETE,
-            SWUPDATE_COMPLETE,
+            SWUPDATE_COMPLETE
         };
 
         std::map<string, int> task_status_map = {
             {string(TASK_SCRIPT) + " " + task_param[TASK_RFC], RFC_COMPLETE},
-            {string(TASK_SCRIPT) + " " + task_param[TASK_SWUPDATE], SWUPDATE_COMPLETE},
+            {string(TASK_SCRIPT) + " " + task_param[TASK_SWUPDATE], SWUPDATE_COMPLETE}
         };
 
         string task_names[] = {
@@ -474,10 +482,7 @@ namespace WPEFramework
             {
                 tasks.push_back(task_names_foreground[TASK_RFC].c_str());
                 tasks.push_back(task_names_foreground[TASK_SWUPDATE].c_str());
-            }
 
-            std::unique_lock<std::mutex> lck(m_callMutex);
-            for (i = 0; i < static_cast<int>(tasks.size()) && !m_abort_flag; i++)
             {
                 int task_status = -1;
                 task = tasks[i];
@@ -2639,7 +2644,7 @@ namespace WPEFramework
             string codeDLtask;
             int k_ret = EINVAL;
             int i = 0;
-            bool task_status[3] = {false};
+            bool task_status[2] = {false};
             bool result = false;
             
             /* run only when the maintenance status is MAINTENANCE_STARTED */
@@ -2659,11 +2664,11 @@ namespace WPEFramework
                     task_status[1] = task_status_SWUPDATE->second;
                 }
 
-                for (i = 0; i < 3; i++)
+                for (i = 0; i < 2; i++)
                 {
                     MM_LOGINFO("task status [%d]  = %s Task Name %s", i, (task_status[i]) ? "true" : "false", task_names[i].c_str());
                 }
-                for (i = 0; i < 3; i++)
+                for (i = 0; i < 2; i++)
                 {
                     if (task_status[i])
                     {
