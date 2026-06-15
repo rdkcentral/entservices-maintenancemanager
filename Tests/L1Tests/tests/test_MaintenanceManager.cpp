@@ -80,7 +80,7 @@ protected:
 	plugin_->m_setting.remove("LastSuccessfulCompletionTime");
         plugin_->m_setting.remove("LastMaintenanceStatus");
         /* Remove any leftover previousreboot.info from prior tests */
-        remove("/opt/secure/reboot/previousreboot.info");
+        remove("/opt/secure/reboot/maintenance_reboot");
     }
 
     virtual ~MaintenanceManagerTest() override
@@ -1693,18 +1693,12 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_SkipsUnsolicitedMainte
 
     plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
     plugin_->m_setting.setValue("LastMaintenanceStatus", "MAINTENANCE_COMPLETE");
-    /* Write previousreboot.info as reboot-manager would after a maintenance reboot */
+
+    /* Create maintenance reboot flag as reboot-manager would after a maintenance reboot */
     {
         system("mkdir -p /opt/secure/reboot");
-        FILE *fp = fopen("/opt/secure/reboot/previousreboot.info", "w");
+        FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
         if (fp) {
-            fprintf(fp, "{\n");
-            fprintf(fp, "\"timestamp\":\"Mon Jan 01 00:00:00 UTC 2024\",\n");
-            fprintf(fp, "\"source\":\"PwrMgr\",\n");
-            fprintf(fp, "\"reason\":\"MAINTENANCE_REBOOT\",\n");
-            fprintf(fp, "\"customReason\":\"MAINTENANCE_REBOOT\",\n");
-            fprintf(fp, "\"otherReason\":\"Scheduled maintenance\"\n");
-            fprintf(fp, "}\n");
             fclose(fp);
         }
     }
@@ -1715,7 +1709,7 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_SkipsUnsolicitedMainte
     EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_COMPLETE);
     EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
     EXPECT_TRUE(plugin_->g_unsolicited_complete);
-    remove("/opt/secure/reboot/previousreboot.info");
+    remove("/opt/secure/reboot/maintenance_reboot");
 }
 
 TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMaintenanceStatusIsMissing)
@@ -1724,18 +1718,11 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
     plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
-    /* Write previousreboot.info - reboot reason matches, but status key is missing */
+    /* Create maintenance reboot flag - reboot reason matches, but status key is missing */
     {
         system("mkdir -p /opt/secure/reboot");
-        FILE *fp = fopen("/opt/secure/reboot/previousreboot.info", "w");
+        FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
         if (fp) {
-            fprintf(fp, "{\n");
-            fprintf(fp, "\"timestamp\":\"Mon Jan 01 00:00:00 UTC 2024\",\n");
-            fprintf(fp, "\"source\":\"PwrMgr\",\n");
-            fprintf(fp, "\"reason\":\"MAINTENANCE_REBOOT\",\n");
-            fprintf(fp, "\"customReason\":\"MAINTENANCE_REBOOT\",\n");
-            fprintf(fp, "\"otherReason\":\"Scheduled maintenance\"\n");
-            fprintf(fp, "}\n");
             fclose(fp);
         }
     }
@@ -1746,7 +1733,7 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_IDLE);
     EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
     EXPECT_FALSE(plugin_->g_unsolicited_complete);
-    remove("/opt/secure/reboot/previousreboot.info");
+    remove("/opt/secure/reboot/maintenance_reboot");
 }
 
 TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMaintenanceStatusIsNotComplete)
@@ -1758,15 +1745,8 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     plugin_->m_setting.setValue("LastMaintenanceStatus", "MAINTENANCE_IDLE");
     {
         system("mkdir -p /opt/secure/reboot");
-        FILE *fp = fopen("/opt/secure/reboot/previousreboot.info", "w");
+        FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
         if (fp) {
-            fprintf(fp, "{\n");
-            fprintf(fp, "\"timestamp\":\"Mon Jan 01 00:00:00 UTC 2024\",\n");
-            fprintf(fp, "\"source\":\"PwrMgr\",\n");
-            fprintf(fp, "\"reason\":\"MAINTENANCE_REBOOT\",\n");
-            fprintf(fp, "\"customReason\":\"MAINTENANCE_REBOOT\",\n");
-            fprintf(fp, "\"otherReason\":\"Scheduled maintenance\"\n");
-            fprintf(fp, "}\n");
             fclose(fp);
         }
     }
@@ -1777,7 +1757,7 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_IDLE);
     EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
     EXPECT_FALSE(plugin_->g_unsolicited_complete);
-    remove("/opt/secure/reboot/previousreboot.info");
+    remove("/opt/secure/reboot/maintenance_reboot");
 }
 
 TEST_F(MaintenanceManagerTest, InitializeIARM_RegistersEventAndBootsUp) {
