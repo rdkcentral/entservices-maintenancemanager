@@ -67,8 +67,8 @@ namespace {
         cSettings settings(MAINTENANCE_MGR_RECORD_FILE);
         return settings.getValue(key).String();
     }
-}
 #endif /* GTEST_ENABLE */
+}
 
 class MaintenanceManagerTest : public Test {
 protected:
