@@ -1,4 +1,4 @@
-# entservices-softwareupdate
+# entservices-maintenancemanager
 
 Following plugins are moved to dedicated repositories as per below table:
 
