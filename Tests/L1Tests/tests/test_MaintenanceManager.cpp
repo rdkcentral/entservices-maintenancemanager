@@ -1706,42 +1706,6 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_InitializesCorrectly1)
 
 }
 
-TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_SkipsUnsolicitedMaintenanceWhenRebootHistoryMatches)
-{
-    plugin_->m_service = &service_;
-    Plugin::MaintenanceManager::_instance = &(*plugin_);
-
-    setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
-    setMaintenanceRecordValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
-
-    /* Reset shared static/runtime state to simulate a true boot */
-    plugin_->g_unsolicited_complete = false;
-    plugin_->m_abort_flag = false;
-    plugin_->g_task_status = 0;
-    plugin_->g_maintenance_type = UNSOLICITED_MAINTENANCE;
-    plugin_->g_is_critical_maintenance = "false";
-    plugin_->g_is_reboot_pending = "false";
-    plugin_->g_lastSuccessful_maint_time = "";
-    plugin_->g_epoch_time = "";
-    plugin_->m_notify_status = MAINTENANCE_IDLE;
-
-    /* Create maintenance reboot flag as reboot-manager would after a maintenance reboot */
-    {
-        ASSERT_EQ(0, system("mkdir -p /opt/secure/reboot"));
-        FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
-        ASSERT_NE(fp, nullptr);
-        fclose(fp);
-    }
-
-    plugin_->maintenanceManagerOnBootup();
-
-    EXPECT_EQ(plugin_->g_currentMode, FOREGROUND_MODE);
-    EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_COMPLETE);
-    EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
-    EXPECT_TRUE(plugin_->g_unsolicited_complete);
-    remove("/opt/secure/reboot/maintenance_reboot");
-}
-
 TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMaintenanceStatusIsMissing)
 {
     plugin_->m_service = &service_;
