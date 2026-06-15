@@ -22,8 +22,8 @@
 #include <fstream>
 #include <iostream>
 #include "FactoriesImplementation.h"
-#include "MaintenanceManager.cpp"
-#include "MaintenanceManager.h"
+#include "../../../MaintenanceManager/MaintenanceManager.cpp"
+#include "../../../MaintenanceManager/MaintenanceManager.h"
 #include "RfcApiMock.h"
 #include "IarmBusMock.h"
 #include "ServiceMock.h"
@@ -1691,8 +1691,8 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_SkipsUnsolicitedMainte
     plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
-    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
-    plugin_->m_setting.setValue("LastMaintenanceStatus", "MAINTENANCE_COMPLETE");
+    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
+    plugin_->m_setting.setValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
 
     /* Create maintenance reboot flag as reboot-manager would after a maintenance reboot */
     {
@@ -1717,7 +1717,7 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
-    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
+    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
     /* Create maintenance reboot flag - reboot reason matches, but status key is missing */
     {
         system("mkdir -p /opt/secure/reboot");
@@ -1741,8 +1741,8 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
-    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", "1780190908");
-    plugin_->m_setting.setValue("LastMaintenanceStatus", "MAINTENANCE_IDLE");
+    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
+    plugin_->m_setting.setValue("LastMaintenanceStatus", std::string("MAINTENANCE_IDLE"));
     {
         system("mkdir -p /opt/secure/reboot");
         FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
@@ -1758,6 +1758,23 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
     EXPECT_FALSE(plugin_->g_unsolicited_complete);
     remove("/opt/secure/reboot/maintenance_reboot");
+}
+
+TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenMaintenanceRebootFlagIsAbsent)
+{
+    plugin_->m_service = &service_;
+    Plugin::MaintenanceManager::_instance = &(*plugin_);
+
+    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
+    plugin_->m_setting.setValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
+    remove("/opt/secure/reboot/maintenance_reboot");
+
+    plugin_->maintenanceManagerOnBootup();
+
+    EXPECT_EQ(plugin_->g_currentMode, FOREGROUND_MODE);
+    EXPECT_EQ(plugin_->m_notify_status, MAINTENANCE_IDLE);
+    EXPECT_EQ(plugin_->g_maintenance_type, UNSOLICITED_MAINTENANCE);
+    EXPECT_FALSE(plugin_->g_unsolicited_complete);
 }
 
 TEST_F(MaintenanceManagerTest, InitializeIARM_RegistersEventAndBootsUp) {
