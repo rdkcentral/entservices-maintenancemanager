@@ -2,8 +2,8 @@
 
 This repository defines custom Copilot agents and skills to support an OpenSpec-first engineering lifecycle.
 
-- Skills reference: [.github/skills/README.md](.github/skills/README.md)
-- OpenSpec directory guide: [openspec/README.md](openspec/README.md)
+- Skills reference: [../skills/README.md](../skills/README.md)
+- OpenSpec directory guide: [../../openspec/README.md](../../openspec/README.md)
 
 ## Source of Truth Policy
 
