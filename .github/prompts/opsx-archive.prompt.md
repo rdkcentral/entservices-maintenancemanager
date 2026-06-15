@@ -1,154 +1,95 @@
 ---
-description: Archive a completed change in the experimental workflow
+description: Move a completed OpenSpec change into archive with safety checks
 ---
 
-Archive a completed change in the experimental workflow.
+Archive an OpenSpec change after validating completion state and sync status.
 
-**Input**: Optionally specify a change name after `/opsx:archive` (e.g., `/opsx:archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+Input:
+- /opsx:archive <change-name> is optional.
+- If missing or unclear, require explicit user selection from active changes.
 
-**Steps**
+Procedure:
 
-1. **If no change name provided, prompt for selection**
-
-   Run `openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
-
-   Show only active changes (not already archived).
-   Include the schema used for each change if available.
-
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
-
-2. **Check artifact completion status**
-
-   Run `openspec status --change "<name>" --json` to check artifact completion.
-
-   Parse the JSON to understand:
-   - `schemaName`: The workflow being used
-   - `artifacts`: List of artifacts with their status (`done` or other)
-
-   **If any artifacts are not `done`:**
-   - Display warning listing incomplete artifacts
-   - Prompt user for confirmation to continue
-   - Proceed if user confirms
-
-3. **Check task completion status**
-
-   Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
-
-   Count tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete).
-
-   **If incomplete tasks found:**
-   - Display warning showing count of incomplete tasks
-   - Prompt user for confirmation to continue
-   - Proceed if user confirms
-
-   **If no tasks file exists:** Proceed without task-related warning.
-
-4. **Assess delta spec sync state**
-
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
-
-   **If delta specs exist:**
-   - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
-   - Determine what changes would be applied (adds, modifications, removals, renames)
-   - Show a combined summary before prompting
-
-   **Prompt options:**
-   - If changes needed: "Sync now (recommended)", "Archive without syncing"
-   - If already synced: "Archive now", "Sync anyway", "Cancel"
-
-   If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
-
-5. **Perform the archive**
-
-   Create the archive directory if it doesn't exist:
-   ```bash
-   mkdir -p openspec/changes/archive
-   ```
-
-   Generate target name using current date: `YYYY-MM-DD-<change-name>`
-
-   **Check if target already exists:**
-   - If yes: Fail with error, suggest renaming existing archive or using different date
-   - If no: Move the change directory to archive
-
-   ```bash
-   mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
-   ```
-
-6. **Display summary**
-
-   Show archive completion summary including:
-   - Change name
-   - Schema that was used
-   - Archive location
-   - Spec sync status (synced / sync skipped / no delta specs)
-   - Note about any warnings (incomplete artifacts/tasks)
-
-**Output On Success**
-
+1. Select change
+- If name is not provided, run:
+```bash
+openspec list --json
 ```
+- Present active (non-archived) choices with AskUserQuestion.
+- Do not auto-pick a change.
+
+2. Check artifact completion
+```bash
+openspec status --change "<name>" --json
+```
+- Read schemaName and artifact status values.
+- If any artifact is not done, show a warning and ask whether to continue.
+
+3. Check task checklist completion
+- Read the change tasks file (typically tasks.md).
+- Count unchecked items (- [ ]) and checked items (- [x]).
+- If unfinished tasks exist, warn and require confirmation before continuing.
+- If no tasks file exists, continue without this warning.
+
+4. Evaluate delta spec sync
+- Look for delta specs at openspec/changes/<name>/specs/.
+- If none exist, continue without sync operations.
+- If present, compare against corresponding main specs in openspec/specs/.
+- Summarize adds, edits, removals, and renames before prompting.
+- Offer choices based on state:
+  - pending sync: Sync now (recommended) or Archive without syncing
+  - already aligned: Archive now, Sync anyway, or Cancel
+- If user requests sync, invoke the sync skill and continue the archive flow afterward.
+
+5. Archive the change directory
+```bash
+mkdir -p openspec/changes/archive
+```
+- Build destination name as YYYY-MM-DD-<name>.
+- If destination already exists, stop with a clear error and recovery options.
+- Otherwise move:
+```bash
+mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
+```
+
+6. Print result summary
+- Include change name, schema name, archive path, and spec sync status.
+- Include warnings if artifacts/tasks were incomplete or sync was skipped.
+
+Success format example:
 ## Archive Complete
 
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** ✓ Synced to main specs
+Change: <change-name>
+Schema: <schema-name>
+Archived to: openspec/changes/archive/YYYY-MM-DD-<name>/
+Specs: synced to main specs
 
-All artifacts complete. All tasks complete.
-```
-
-**Output On Success (No Delta Specs)**
-
-```
-## Archive Complete
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** No delta specs
-
-All artifacts complete. All tasks complete.
-```
-
-**Output On Success With Warnings**
-
-```
+Warning example:
 ## Archive Complete (with warnings)
 
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** Sync skipped (user chose to skip)
+Change: <change-name>
+Schema: <schema-name>
+Archived to: openspec/changes/archive/YYYY-MM-DD-<name>/
+Specs: sync skipped
 
-**Warnings:**
-- Archived with 2 incomplete artifacts
-- Archived with 3 incomplete tasks
-- Delta spec sync was skipped (user chose to skip)
+Warnings:
+- incomplete artifacts were present
+- incomplete tasks were present
 
-Review the archive if this was not intentional.
-```
-
-**Output On Error (Archive Exists)**
-
-```
+Failure example (target exists):
 ## Archive Failed
 
-**Change:** <change-name>
-**Target:** openspec/changes/archive/YYYY-MM-DD-<name>/
+Change: <change-name>
+Target: openspec/changes/archive/YYYY-MM-DD-<name>/
+Reason: target directory already exists
 
-Target archive directory already exists.
+Options:
+1. Rename existing archive
+2. Remove duplicate archive if appropriate
+3. Retry later with a new date
 
-**Options:**
-1. Rename the existing archive
-2. Delete the existing archive if it's a duplicate
-3. Wait until a different date to archive
-```
-
-**Guardrails**
-- Always prompt for change selection if not provided
-- Use artifact graph (openspec status --json) for completion checking
-- Don't block archive on warnings - just inform and confirm
-- Preserve .openspec.yaml when moving to archive (it moves with the directory)
-- Show clear summary of what happened
-- If sync is requested, use the Skill tool to invoke `openspec-sync-specs` (agent-driven)
-- If delta specs exist, always run the sync assessment and show the combined summary before prompting
+Rules:
+- Require explicit selection when input is missing.
+- Use openspec status JSON as the source of completion truth.
+- Warnings do not block archive if the user confirms.
+- Keep all change files together when moving, including hidden metadata.
