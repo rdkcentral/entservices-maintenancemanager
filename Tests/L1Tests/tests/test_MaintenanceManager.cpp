@@ -48,7 +48,6 @@ using ::testing::AssertionFailure;
 extern "C" FILE* __real_popen(const char* command, const char* type);
 extern "C" int __real_pclose(FILE* pipe);
 
-#if defined(GTEST_ENABLE)
 namespace {
     void clearMaintenanceRecord()
     {
@@ -56,6 +55,7 @@ namespace {
         settings.remove("LastSuccessfulCompletionTime");
         settings.remove("LastMaintenanceStatus");
     }
+#if defined(GTEST_ENABLE)
     void setMaintenanceRecordValue(const std::string& key, const std::string& value)
     {
         cSettings settings(MAINTENANCE_MGR_RECORD_FILE);
