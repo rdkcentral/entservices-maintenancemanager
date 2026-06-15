@@ -2,6 +2,10 @@
 description: Create an OpenSpec change and produce required artifacts in one pass
 ---
 
+Provenance note:
+- This prompt is maintained locally for this repository workflow.
+- Behavior aligns with OpenSpec lifecycle usage in this codebase.
+
 Create a new OpenSpec change and generate the artifacts needed to begin implementation.
 
 Primary deliverables:
@@ -16,7 +20,7 @@ Input handling:
   - a kebab-case change id, or
   - a natural-language feature/fix description
 
-Execution flow:
+Execution sequence:
 
 1. Resolve change intent
 - If the user gave no input, use AskUserQuestion (freeform) and ask what they want to build or fix.
@@ -36,7 +40,7 @@ openspec status --change "<name>" --json
 - Read artifact status and dependency order.
 - Capture applyRequires so completion is measured correctly.
 
-4. Build artifacts in dependency order
+4. Generate artifacts by dependency order
 - Track progress with TodoWrite.
 - For each artifact that is currently ready:
 ```bash
@@ -46,7 +50,7 @@ openspec instructions <artifact-id> --change "<name>" --json
 - Use context and rules only as constraints, never as copied output.
 - Read completed dependency artifacts before drafting the current one.
 - Write the artifact to outputPath.
-- Report concise progress (example: Created design).
+- Report concise progress (example: completed design artifact).
 
 5. Re-check readiness after each artifact
 ```bash

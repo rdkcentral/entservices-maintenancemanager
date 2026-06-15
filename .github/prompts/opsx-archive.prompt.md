@@ -2,13 +2,17 @@
 description: Move a completed OpenSpec change into archive with safety checks
 ---
 
+Provenance note:
+- This prompt is repository-local guidance for OpenSpec operations.
+- It is tailored for the archive flow used by this project.
+
 Archive an OpenSpec change after validating completion state and sync status.
 
 Input:
 - /opsx:archive <change-name> is optional.
 - If missing or unclear, require explicit user selection from active changes.
 
-Procedure:
+Archive procedure:
 
 1. Select change
 - If name is not provided, run:
@@ -52,7 +56,7 @@ mkdir -p openspec/changes/archive
 mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
 ```
 
-6. Print result summary
+6. Print archive result summary
 - Include change name, schema name, archive path, and spec sync status.
 - Include warnings if artifacts/tasks were incomplete or sync was skipped.
 
