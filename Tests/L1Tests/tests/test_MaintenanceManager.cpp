@@ -100,7 +100,6 @@ protected:
         Wraps::setImpl(p_wrapsImplMock);
 
 	clearMaintenanceRecord();
-        /* Remove any leftover previousreboot.info from prior tests */
         remove("/opt/secure/reboot/maintenance_reboot");
     }
 
@@ -1715,13 +1714,23 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_SkipsUnsolicitedMainte
     setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
     setMaintenanceRecordValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
 
+    /* Reset shared static/runtime state to simulate a true boot */
+    plugin_->g_unsolicited_complete = false;
+    plugin_->m_abort_flag = false;
+    plugin_->g_task_status = 0;
+    plugin_->g_maintenance_type = UNSOLICITED_MAINTENANCE;
+    plugin_->g_is_critical_maintenance = "false";
+    plugin_->g_is_reboot_pending = "false";
+    plugin_->g_lastSuccessful_maint_time = "";
+    plugin_->g_epoch_time = "";
+    plugin_->m_notify_status = MAINTENANCE_IDLE;
+
     /* Create maintenance reboot flag as reboot-manager would after a maintenance reboot */
     {
-        system("mkdir -p /opt/secure/reboot");
+        ASSERT_EQ(0, system("mkdir -p /opt/secure/reboot"));
         FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
-        if (fp) {
-            fclose(fp);
-        }
+        ASSERT_NE(fp, nullptr);
+        fclose(fp);
     }
 
     plugin_->maintenanceManagerOnBootup();
@@ -1741,11 +1750,10 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
     /* Create maintenance reboot flag - reboot reason matches, but status key is missing */
     {
-        system("mkdir -p /opt/secure/reboot");
+        ASSERT_EQ(0, system("mkdir -p /opt/secure/reboot"));
         FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
-        if (fp) {
-            fclose(fp);
-        }
+	ASSERT_NE(fp, nullptr);
+        fclose(fp);
     }
 
     plugin_->maintenanceManagerOnBootup();
@@ -1765,11 +1773,10 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
     setMaintenanceRecordValue("LastMaintenanceStatus", std::string("MAINTENANCE_IDLE"));
     {
-        system("mkdir -p /opt/secure/reboot");
+        ASSERT_EQ(0, system("mkdir -p /opt/secure/reboot"));
         FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
-        if (fp) {
-            fclose(fp);
-        }
+	ASSERT_NE(fp, nullptr);
+        fclose(fp);
     }
 
     plugin_->maintenanceManagerOnBootup();
