@@ -48,6 +48,28 @@ using ::testing::AssertionFailure;
 extern "C" FILE* __real_popen(const char* command, const char* type);
 extern "C" int __real_pclose(FILE* pipe);
 
+namespace {
+    void clearMaintenanceRecord()
+    {
+        cSettings settings(MAINTENANCE_MGR_RECORD_FILE);
+        settings.remove("LastSuccessfulCompletionTime");
+        settings.remove("LastMaintenanceStatus");
+        settings.remove("softwareoptout");
+    }
+
+    void setMaintenanceRecordValue(const std::string& key, const std::string& value)
+    {
+        cSettings settings(MAINTENANCE_MGR_RECORD_FILE);
+        settings.setValue(key, value);
+    }
+
+    std::string getMaintenanceRecordValue(const std::string& key)
+    {
+        cSettings settings(MAINTENANCE_MGR_RECORD_FILE);
+        return settings.getValue(key).String();
+    }
+}
+
 class MaintenanceManagerTest : public Test {
 protected:
     Core::ProxyType<Plugin::MaintenanceManager> plugin_;
@@ -77,8 +99,7 @@ protected:
         p_wrapsImplMock  = new testing::NiceMock <WrapsImplMock>;
         Wraps::setImpl(p_wrapsImplMock);
 
-	plugin_->m_setting.remove("LastSuccessfulCompletionTime");
-        plugin_->m_setting.remove("LastMaintenanceStatus");
+	clearMaintenanceRecord();
         /* Remove any leftover previousreboot.info from prior tests */
         remove("/opt/secure/reboot/maintenance_reboot");
     }
@@ -1691,8 +1712,8 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_SkipsUnsolicitedMainte
     plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
-    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
-    plugin_->m_setting.setValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
+    setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
+    setMaintenanceRecordValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
 
     /* Create maintenance reboot flag as reboot-manager would after a maintenance reboot */
     {
@@ -1717,7 +1738,7 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
-    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
+    setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
     /* Create maintenance reboot flag - reboot reason matches, but status key is missing */
     {
         system("mkdir -p /opt/secure/reboot");
@@ -1741,8 +1762,8 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenLastMai
     plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
-    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
-    plugin_->m_setting.setValue("LastMaintenanceStatus", std::string("MAINTENANCE_IDLE"));
+    setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
+    setMaintenanceRecordValue("LastMaintenanceStatus", std::string("MAINTENANCE_IDLE"));
     {
         system("mkdir -p /opt/secure/reboot");
         FILE *fp = fopen("/opt/secure/reboot/maintenance_reboot", "w");
@@ -1765,8 +1786,8 @@ TEST_F(MaintenanceManagerTest, MaintenanceManagerOnBootup_DoesNotSkipWhenMainten
     plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
 
-    plugin_->m_setting.setValue("LastSuccessfulCompletionTime", std::string("1780190908"));
-    plugin_->m_setting.setValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
+    setMaintenanceRecordValue("LastSuccessfulCompletionTime", std::string("1780190908"));
+    setMaintenanceRecordValue("LastMaintenanceStatus", std::string("MAINTENANCE_COMPLETE"));
     remove("/opt/secure/reboot/maintenance_reboot");
 
     plugin_->maintenanceManagerOnBootup();
