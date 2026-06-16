@@ -84,7 +84,6 @@ using namespace std;
 #define RFC_TASK "RFC"
 
 #define LAST_MAINTENANCE_STATUS_KEY "LastMaintenanceStatus"
-#define MAINTENANCE_REBOOT_REASON "MAINTENANCE_REBOOT"
 #define MAINTENANCE_REBOOT_FLAG "/opt/secure/reboot/maintenance_reboot"
 
 enum TaskIndices {
@@ -1122,14 +1121,14 @@ namespace WPEFramework
             return false;
         }
 
-        string MaintenanceManager::getLastRebootReason()
+        bool MaintenanceManager::isMaintenanceReboot()
         {
-            string lastRebootReason;
+            bool isMaintenanceReboot = false;
 
             if (Utils::fileExists(MAINTENANCE_REBOOT_FLAG))
             {
-                lastRebootReason = MAINTENANCE_REBOOT_REASON;
                 MM_LOGINFO("Maintenance reboot flag found: %s", MAINTENANCE_REBOOT_FLAG);
+                isMaintenanceReboot = true;
 
                 if (remove(MAINTENANCE_REBOOT_FLAG) == 0)
                 {
@@ -1145,17 +1144,17 @@ namespace WPEFramework
                 MM_LOGINFO("Maintenance reboot flag not present: %s", MAINTENANCE_REBOOT_FLAG);
             }
 
-            return lastRebootReason;
+            return isMaintenanceReboot;
         }
 
-        bool MaintenanceManager::skipUnsolicitedMaintenanceAtBoot(const string &lastRebootReason, const string &lastMaintenanceStatus)
+        bool MaintenanceManager::skipUnsolicitedMaintenance(bool isMaintenanceReboot, const string &lastMaintenanceStatus)
         {
             MM_LOGINFO("Boot maintenance history: lastMaintenanceStatus=%s lastRebootReason=%s",
                 lastMaintenanceStatus.empty() ? "N/A" : lastMaintenanceStatus.c_str(),
-                lastRebootReason.empty() ? "N/A" : lastRebootReason.c_str());
+                isMaintenanceReboot ? "true" : "false");
 
-            return (lastMaintenanceStatus == "MAINTENANCE_COMPLETE") &&
-                   (lastRebootReason == MAINTENANCE_REBOOT_REASON);
+            return (lastMaintenanceStatus == "MAINTENANCE_COMPLETE") && isMaintenanceReboot;
+
         }
         /**
          * @brief Checks the activation status of the device.
@@ -1625,8 +1624,7 @@ namespace WPEFramework
             MaintenanceManager::g_unsolicited_complete = false;
 
             const string lastMaintenanceStatus = m_setting.getValue(LAST_MAINTENANCE_STATUS_KEY).String();
-            const string lastRebootReason = getLastRebootReason();
-            if (skipUnsolicitedMaintenanceAtBoot(lastRebootReason, lastMaintenanceStatus))
+            if (skipUnsolicitedMaintenanceAtBoot(isMaintenanceReboot(), lastMaintenanceStatus))
             {
                 MM_LOGINFO("Skipping unsolicited maintenance at boot because previous maintenance status is complete and reboot reason is maintenance reboot");
                 m_statusMutex.lock();
@@ -2938,13 +2936,16 @@ namespace WPEFramework
             JsonObject params;
             /* we store the updated value as well */
             m_notify_status = status;
-            m_setting.setValue(LAST_MAINTENANCE_STATUS_KEY, notifyStatusToString(m_notify_status));
+            if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS)
+            {
+                m_setting.setValue(LAST_MAINTENANCE_STATUS_KEY, notifyStatusToString(m_notify_status));
+            }
             params["maintenanceStatus"] = notifyStatusToString(status);
 
-			if (notifyStatusToString(m_notify_status) == "MAINTENANCE_INCOMPLETE")
-			{
-				t2_event_d("SYST_INFO_MaintnceIncmpl", 1);
-			}
+            if (notifyStatusToString(m_notify_status) == "MAINTENANCE_INCOMPLETE")
+            {
+                t2_event_d("SYST_INFO_MaintnceIncmpl", 1);
+            }
 			
             sendNotify(EVT_ONMAINTENANCSTATUSCHANGE, params);
 #if defined(ENABLE_JOURNAL_LOGGING)

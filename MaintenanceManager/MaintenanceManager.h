@@ -254,8 +254,8 @@ namespace WPEFramework
             bool queryIAuthService();
             int abortTask(const char *, int sig = SIGABRT);
             pid_t getTaskPID(const char *);
-            bool skipUnsolicitedMaintenanceAtBoot(const string &lastRebootReason, const string &lastMaintenanceStatus);
-            string getLastRebootReason();
+            bool skipUnsolicitedMaintenanceAtBoot(bool isMaintenanceReboot, const string &lastMaintenanceStatus);
+            bool isMaintenanceReboot();
             void iarmEventHandler(const char *owner, IARM_EventId_t eventId, void *data, size_t len);
             static void _MaintenanceMgrEventHandler(const char *owner, IARM_EventId_t eventId, void *data, size_t len);
             /* We do not allow this plugin to be copied !! */
