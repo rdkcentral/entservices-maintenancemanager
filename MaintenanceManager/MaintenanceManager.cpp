@@ -1149,7 +1149,7 @@ namespace WPEFramework
 
         bool MaintenanceManager::skipUnsolicitedMaintenance(bool isMaintenanceReboot, const string &lastMaintenanceStatus)
         {
-            MM_LOGINFO("Boot maintenance history: lastMaintenanceStatus=%s lastRebootReason=%s",
+            MM_LOGINFO("Boot maintenance history: lastMaintenanceStatus=%s isMaintenanceReboot=%s",
                 lastMaintenanceStatus.empty() ? "N/A" : lastMaintenanceStatus.c_str(),
                 isMaintenanceReboot ? "true" : "false");
 
@@ -1624,7 +1624,7 @@ namespace WPEFramework
             MaintenanceManager::g_unsolicited_complete = false;
 
             const string lastMaintenanceStatus = m_setting.getValue(LAST_MAINTENANCE_STATUS_KEY).String();
-            if (skipUnsolicitedMaintenanceAtBoot(isMaintenanceReboot(), lastMaintenanceStatus))
+            if (skipUnsolicitedMaintenance(isMaintenanceReboot(), lastMaintenanceStatus))
             {
                 MM_LOGINFO("Skipping unsolicited maintenance at boot because previous maintenance status is complete and reboot reason is maintenance reboot");
                 m_statusMutex.lock();
