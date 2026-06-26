@@ -83,6 +83,9 @@ using namespace std;
 #define IMAGE_CHECK_SCRIPT RDK_PATH "xconfImageCheck.sh"
 #define RFC_TASK "RFC"
 
+#define LAST_MAINTENANCE_STATUS_KEY "LastMaintenanceStatus"
+#define MAINTENANCE_REBOOT_FLAG "/opt/secure/reboot/maintenance_reboot"
+
 enum TaskIndices {
     TASK_RFC = 0,
     TASK_SWUPDATE
@@ -258,6 +261,7 @@ namespace WPEFramework
                 }
                 return result;
             } /* end of getServiceState */
+
         } /* end of namespace*/
 
         /* Prototypes */
@@ -1108,6 +1112,41 @@ namespace WPEFramework
             return false;
         }
 
+        bool MaintenanceManager::isMaintenanceReboot()
+        {
+            bool isMaintenanceReboot = false;
+
+            if (Utils::fileExists(MAINTENANCE_REBOOT_FLAG))
+            {
+                MM_LOGINFO("Maintenance reboot flag found: %s", MAINTENANCE_REBOOT_FLAG);
+                isMaintenanceReboot = true;
+
+                if (remove(MAINTENANCE_REBOOT_FLAG) == 0)
+                {
+                    MM_LOGINFO("Maintenance reboot flag cleared after read: %s", MAINTENANCE_REBOOT_FLAG);
+                }
+                else
+                {
+                    MM_LOGWARN("Failed to clear maintenance reboot flag %s errno=%d", MAINTENANCE_REBOOT_FLAG, errno);
+                }
+            }
+            else
+            {
+                MM_LOGINFO("Maintenance reboot flag not present: %s", MAINTENANCE_REBOOT_FLAG);
+            }
+
+            return isMaintenanceReboot;
+        }
+
+        bool MaintenanceManager::skipUnsolicitedMaintenance(bool isMaintenanceReboot, const string &lastMaintenanceStatus)
+        {
+            MM_LOGINFO("Boot maintenance history: lastMaintenanceStatus=%s isMaintenanceReboot=%s",
+                lastMaintenanceStatus.empty() ? "N/A" : lastMaintenanceStatus.c_str(),
+                isMaintenanceReboot ? "true" : "false");
+
+            return (lastMaintenanceStatus == "MAINTENANCE_COMPLETE") && isMaintenanceReboot;
+
+        }
         /**
          * @brief Checks the activation status of the device.
          *
@@ -1575,7 +1614,18 @@ namespace WPEFramework
             MaintenanceManager::m_abort_flag = false;
             MaintenanceManager::g_unsolicited_complete = false;
 
-            /* we post just to tell that we are in idle at this moment */
+            const string lastMaintenanceStatus = m_setting.getValue(LAST_MAINTENANCE_STATUS_KEY).String();
+            if (skipUnsolicitedMaintenance(isMaintenanceReboot(), lastMaintenanceStatus))
+            {
+                MM_LOGINFO("Skipping unsolicited maintenance at boot because previous maintenance status is complete and reboot reason is maintenance reboot");
+                m_statusMutex.lock();
+                MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_COMPLETE);
+                m_statusMutex.unlock();
+                MaintenanceManager::g_unsolicited_complete = true;
+                return;
+            }
+
+	    /* we post just to tell that we are in idle at this moment */
             m_statusMutex.lock();
             MaintenanceManager::_instance->onMaintenanceStatusChange(m_notify_status);
             m_statusMutex.unlock();
@@ -2573,7 +2623,7 @@ namespace WPEFramework
                     std::lock_guard<std::mutex> guard(m_callMutex);
                     MM_LOGINFO("startMaintenance triggered with %s TriggerMode", g_triggerMode.empty()?"EMPTY":g_triggerMode.c_str());
                 }
-                
+               
                 g_task_status = 0;
                 g_maintenance_type = SOLICITED_MAINTENANCE;
 
@@ -2837,12 +2887,16 @@ namespace WPEFramework
             JsonObject params;
             /* we store the updated value as well */
             m_notify_status = status;
+            if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS)
+            {
+                m_setting.setValue(LAST_MAINTENANCE_STATUS_KEY, notifyStatusToString(m_notify_status));
+            }
             params["maintenanceStatus"] = notifyStatusToString(status);
 
-			if (notifyStatusToString(m_notify_status) == "MAINTENANCE_INCOMPLETE")
-			{
-				t2_event_d("SYST_INFO_MaintnceIncmpl", 1);
-			}
+            if (notifyStatusToString(m_notify_status) == "MAINTENANCE_INCOMPLETE")
+            {
+                t2_event_d("SYST_INFO_MaintnceIncmpl", 1);
+            }
 			
             sendNotify(EVT_ONMAINTENANCSTATUSCHANGE, params);
 #if defined(ENABLE_JOURNAL_LOGGING)
