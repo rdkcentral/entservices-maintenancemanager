@@ -1,5 +1,7 @@
 # MaintenanceManager
 
+**Version:** 1.15.2
+
 ## Overview
 
 MaintenanceManager is a Thunder plugin that orchestrates maintenance workflows for RDK devices.
