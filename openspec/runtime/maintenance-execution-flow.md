@@ -14,16 +14,19 @@ Both converge in task_execution_thread() with divergent gating behavior.
 ## Unsolicited
 
 - Set in maintenanceManagerOnBootup(): g_maintenance_type = UNSOLICITED_MAINTENANCE.
-- Worker starts automatically from bootup path.
+- Boot path evaluates conditional skip before worker creation.
+- Skip condition: LastMaintenanceStatus == MAINTENANCE_COMPLETE and maintenance reboot marker is present.
+- If skipped, status transitions directly to MAINTENANCE_COMPLETE and g_unsolicited_complete is set true.
+- If not skipped, worker starts from bootup path.
 
-- This provides a startup maintenance cycle without explicit northbound request.
+- This provides a startup maintenance cycle without explicit northbound request, while avoiding immediate repeat runs after successful maintenance reboot.
 
 ## Solicited
 
 - startMaintenance() proceeds only if m_notify_status != MAINTENANCE_STARTED and g_unsolicited_complete is true.
 - It resets task status, sets SOLICITED_MAINTENANCE, marks reboot pending true, and starts worker thread.
 
-- Whether product policy always expects solicited start to be blocked before unsolicited complete is not documented externally.
+- Solicited start remains blocked until unsolicited phase is considered complete, including both executed and conditionally skipped unsolicited paths.
 
 ## Worker Thread Decision Logic
 

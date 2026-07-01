@@ -55,7 +55,7 @@ MaintenanceManager is a hosted component inside Thunder. It exposes northbound J
 
 ### Thunder Hosting Model
 
-- Service registration macro exists: SERVICE_REGISTRATION(MaintenanceManager, 1, 0, 24).
+- Service registration macro uses API version constants defined in the implementation.
 - Constructor registers JSON-RPC methods:
   - getMaintenanceActivityStatus
   - getMaintenanceStartTime
@@ -70,7 +70,9 @@ MaintenanceManager is a hosted component inside Thunder. It exposes northbound J
 
 ### Maintenance Execution Model
 
-- Boot path sets maintenance type to UNSOLICITED_MAINTENANCE and starts worker thread.
+- Boot path sets maintenance type to UNSOLICITED_MAINTENANCE, evaluates skip criteria, and starts worker thread only when unsolicited execution is required.
+- Unsolicited skip criteria: previous persisted status is MAINTENANCE_COMPLETE and current boot reason is a maintenance reboot marker.
+- When unsolicited execution is skipped, plugin sets status to MAINTENANCE_COMPLETE and marks unsolicited-complete true for subsequent solicited requests.
 - API path startMaintenance() sets maintenance type to SOLICITED_MAINTENANCE (only when unsolicited cycle has completed and status is not STARTED).
 - Worker thread computes task list, performs network/activation/whoami gating, launches tasks sequentially, waits on condition variable for module completion events, applies timeout, supports one retry for failed task invocation.
 - Task timeout uses POSIX timer APIs and SIGALRM callback to mark task as error-complete and continue orchestration.
