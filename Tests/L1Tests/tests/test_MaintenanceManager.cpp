@@ -1046,20 +1046,20 @@ TEST_F(MaintenanceManagerTest, TimerHandler_Handles_failedtask) {
     EXPECT_FALSE(plugin_->m_task_map[matchedTask]); // should be set to false
 }
 
-TEST_F(MaintenanceManagerTest, TimerHandler_NonSIGALRM_Ignored)
-{
-    using namespace WPEFramework::Plugin;
-
-    std::string task = task_names_foreground[TASK_RFC];
-    MaintenanceManager::currentTask = task;
-    plugin_->m_task_map[task] = true;
-    plugin_->g_task_status = 999; // sentinel value
-
-    plugin_->timer_handler(SIGINT); // wrong signal
-
-    EXPECT_TRUE(plugin_->m_task_map[task]); // no change
-    EXPECT_EQ(plugin_->g_task_status, 999); // unchanged
-}
+TEST_F(MaintenanceManagerTest, TimerHandler_NonSIGALRM_Ignored)
+
+{
+    using namespace WPEFramework::Plugin;
+    std::string task = task_names_foreground[TASK_RFC];
+    MaintenanceManager::currentTask = task;
+    plugin_->m_task_map[task] = true;
+	plugin_->g_task_status = 999; // sentinel value
+    plugin_->timer_handler(SIGINT); // wrong signal
+    EXPECT_TRUE(plugin_->m_task_map[task]); // no change
+	EXPECT_EQ(plugin_->g_task_status, 999); // unchanged
+
+}
+
 
 TEST_F(MaintenanceManagerTest, TimerHandler_SIGALRM_NoTaskMatch)
 {
