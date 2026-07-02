@@ -29,6 +29,10 @@
   - softwareoptout
   - background_flag
   - LastSuccessfulCompletionTime
+  - LastMaintenanceStatus
+
+- Boot reason marker file used during startup skip decision:
+  - /opt/secure/reboot/maintenance_reboot
 
 - Device initialization context values are written as RFC/TR-181 parameters:
   - Device.DeviceInfo.X_RDKCENTRAL-COM_RFC.Bootstrap.PartnerName
@@ -48,6 +52,7 @@
 ## Bookkeeping semantics
 
 - LastSuccessfulCompletionTime is stored only when all tasks succeed.
+- LastMaintenanceStatus is used at boot to determine whether unsolicited execution can be skipped after a maintenance-triggered reboot.
 - Reboot pending flag set on MAINT_REBOOT_REQUIRED event and also set true at solicited start path.
 
 - isRebootPending in API is not purely event-derived; solicited flow pre-sets it optimistically.

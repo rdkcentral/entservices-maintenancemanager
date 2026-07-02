@@ -37,8 +37,11 @@ flowchart TD
     F --> G[Register IARM maintenance event handler]
     G --> H[maintenanceManagerOnBootup]
     H --> I[Set default state and UNSOLICITED type]
-    I --> J[Emit MAINTENANCE_IDLE notification]
+    I --> I1{Skip unsolicited?}
+    I1 -- Yes --> I2[Post MAINTENANCE_COMPLETE and set unsolicited_complete]
+    I1 -- No --> J[Emit MAINTENANCE_IDLE notification]
     J --> K[Start worker thread]
+    I2 --> L[Register SIGALRM handler]
     K --> L[Register SIGALRM handler]
     L --> M[Initialize success]
 ```
@@ -103,8 +106,10 @@ sequenceDiagram
 flowchart LR
     U[Unsolicited Boot Flow] --> U1[maintenanceManagerOnBootup]
     U1 --> U2[g_maintenance_type=UNSOLICITED]
-    U2 --> U3[May delay STARTED when WhoAmI enabled]
-    U3 --> U4[Auto-run worker]
+    U2 --> U3{Last status COMPLETE and maintenance reboot?}
+    U3 -- Yes --> U4[Set COMPLETE and unsolicited_complete=true]
+    U3 -- No --> U5[May delay STARTED when WhoAmI enabled]
+    U5 --> U6[Auto-run worker]
 
     S[Solicited API Flow] --> S1[startMaintenance]
     S1 --> S2[Requires unsolicited_complete and not STARTED]

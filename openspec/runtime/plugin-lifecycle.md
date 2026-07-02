@@ -6,7 +6,7 @@
 
 - Shared library target built from MaintenanceManager.cpp and Module.cpp.
 - CMake sets MODULE_NAME compile definition and installs plugin shared object to lib/<namespace-lower>/plugins.
-- Thunder registration macro is present: SERVICE_REGISTRATION(MaintenanceManager, 1, 0, 24).
+- Thunder registration macro uses API version constants defined in the implementation.
 
 ## 2) Activation and constructor path
 
@@ -40,10 +40,11 @@
 - Sets initial mode and trigger fields.
 - Sets maintenance type UNSOLICITED_MAINTENANCE.
 - Validates persisted softwareoptout and normalizes invalid/empty to NONE.
-- Resets runtime flags and posts initial onMaintenanceStatusChange(MAINTENANCE_IDLE).
-- Spawns worker thread for maintenance execution.
+- Evaluates conditional unsolicited skip using persisted LastMaintenanceStatus and maintenance reboot marker.
+- If skip condition is met, posts MAINTENANCE_COMPLETE, marks unsolicited-complete, and exits boot flow without creating a worker thread.
+- Before evaluating the skip condition, boot path resets runtime flags, posts initial onMaintenanceStatusChange(MAINTENANCE_IDLE), and spawns the worker thread when unsolicited maintenance is not skipped.
 
-- Boot-time maintenance is designed as default unsolicited orchestration path once plugin initializes and IARM registration succeeds.
+- Boot-time maintenance is unsolicited by default, with a conditional short-circuit when prior maintenance completed and reboot reason indicates maintenance reboot.
 
 ## 5) Steady-state execution resources
 
