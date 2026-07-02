@@ -43,6 +43,7 @@
 ## startMaintenance
 
 - Allowed only when maintenance not currently started and unsolicited cycle complete.
+- Unsolicited completion includes conditional boot skip path where unsolicited is marked complete without launching worker tasks.
 - Sets SOLICITED_MAINTENANCE, clears critical flag, sets reboot pending true, spawns worker thread.
 
 ## stopMaintenance
