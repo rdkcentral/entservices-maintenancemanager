@@ -42,7 +42,7 @@
 - Validates persisted softwareoptout and normalizes invalid/empty to NONE.
 - Evaluates conditional unsolicited skip using persisted LastMaintenanceStatus and maintenance reboot marker.
 - If skip condition is met, posts MAINTENANCE_COMPLETE, marks unsolicited-complete, and exits boot flow without creating a worker thread.
-- If skip condition is not met, boot path resets runtime flags, posts initial onMaintenanceStatusChange(MAINTENANCE_IDLE), and spawns the worker thread.
+- Before evaluating the skip condition, boot path resets runtime flags, posts initial onMaintenanceStatusChange(MAINTENANCE_IDLE), and spawns the worker thread when unsolicited maintenance is not skipped.
 
 - Boot-time maintenance is unsolicited by default, with a conditional short-circuit when prior maintenance completed and reboot reason indicates maintenance reboot.
 
