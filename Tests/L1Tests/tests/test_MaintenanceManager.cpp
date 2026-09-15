@@ -857,7 +857,7 @@ TEST(MaintenanceManagerNotifyStatus, NotifyStatusToString) {
     };
     for (const auto& mStatus : maint_Status) {
         Maint_notify_status_t status = mStatus.first;
-        std::string expected = mStatus.second;
+        const std::string& expected = mStatus.second;
         EXPECT_EQ(expected, notifyStatusToString(status));
     }
 }
@@ -872,10 +872,10 @@ TEST(MaintenanceManagerCheckOptMode, CheckValidOptOutMode) {
 	};
 	
 	for (const auto& optMode: maint_OptOutModes){
-		EXPECT_EQ(true, checkValidOptOutModes(optMode));
+        EXPECT_TRUE(checkValidOptOutModes(optMode));
 	}
 	std::string invalid_optMode = "INVALID_OPTOUT_MODE";
-	EXPECT_EQ(false, checkValidOptOutModes(invalid_optMode));
+    EXPECT_FALSE(checkValidOptOutModes(invalid_optMode));
 }
 
 /* ---- getFileContent() ---- */

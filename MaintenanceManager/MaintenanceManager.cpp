@@ -142,7 +142,7 @@ string notifyStatusToString(Maint_notify_status_t &status)
  * @param OptoutModes The Opt-out mode to check.
  * @return true if the Opt-out mode is valid, false otherwise.
  */
-bool checkValidOptOutModes(string OptoutModes)
+bool checkValidOptOutModes(const string &OptoutModes)
 {
     vector<string> modes{
         "ENFORCE_OPTOUT",
@@ -655,7 +655,7 @@ namespace WPEFramework
                             if (joGetResult.HasLabel(kDeviceInitializationContext))
                             {
                                 MM_LOGINFO("%s found in the response", kDeviceInitializationContext);
-                                success = setDeviceInitializationContext(std::move(joGetResult));
+                                success = setDeviceInitializationContext(joGetResult);
                             }
                             else
                             {
@@ -1512,7 +1512,7 @@ namespace WPEFramework
          * @param response_data The JSON object containing the initialization context.
          * @return true if the context was successfully set, false otherwise.
          */
-        bool MaintenanceManager::setDeviceInitializationContext(JsonObject response_data)
+        bool MaintenanceManager::setDeviceInitializationContext(const JsonObject &response_data)
         {
             bool setDone = false;
             bool paramEmpty = false;
