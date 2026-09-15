@@ -630,24 +630,25 @@ namespace WPEFramework
                         JsonObject joGetResult;
 
                         thunder_client->Invoke<JsonObject, JsonObject>(5000, "getDeviceInitializationContext", params, joGetResult);
-                        if (joGetResult.HasLabel("success") && joGetResult["success"].Boolean())
-                        {
+                        bool invokeSuccess = joGetResult.HasLabel("success") && joGetResult["success"].Boolean();
+                        if (invokeSuccess)
+                            {
                             static const char *kDeviceInitializationContext = "deviceInitializationContext";
                             if (joGetResult.HasLabel(kDeviceInitializationContext))
-                            {
+                                {
                                 MM_LOGINFO("%s found in the response", kDeviceInitializationContext);
-                                success = setDeviceInitializationContext(std::move(joGetResult));
+                            success = setDeviceInitializationContext(std::move(joGetResult));
                             }
                             else
-                            {
-                                MM_LOGERR("%s is not available in the response", kDeviceInitializationContext);
-                            }
+                                {
+                            MM_LOGERR("%s is not available in the response", kDeviceInitializationContext);
+                        }
                         }
                         else
-                        {
-                            MM_LOGERR("getDeviceInitializationContext failed");
-                        }
-						if (joGetResult.HasLabel("success") && !joGetResult["success"].Boolean())
+                            {
+                        MM_LOGERR("getDeviceInitializationContext failed");
+						}
+                        if (!invokeSuccess)
 						{
 							t2_event_d("SYST_ERROR_WAI_InitERR", 1);
 						}
