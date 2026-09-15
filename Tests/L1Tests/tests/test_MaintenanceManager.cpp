@@ -1051,6 +1051,24 @@ TEST_F(MaintenanceManagerTest, TimerHandler_Handles_failedtask) {
     EXPECT_FALSE(plugin_->m_task_map[matchedTask]); // should be set to false
 }
 
+TEST_F(MaintenanceManagerTest, TimerHandler_StaleGeneration_DoesNotFailCurrentTask)
+{
+    using namespace WPEFramework::Plugin;
+
+    std::string taskA = task_names_foreground[TASK_RFC];
+    std::string taskB = task_names_foreground[TASK_SWUPDATE];
+    MaintenanceManager::currentTask = taskB;
+    plugin_->m_task_map[taskA] = false;
+    plugin_->m_task_map[taskB] = true;
+    plugin_->g_task_status = 0;
+    MaintenanceManager::g_armedTimerGeneration = 2;
+
+    plugin_->timer_handler(SIGALRM, 1); // queued expiry for the previous start
+
+    EXPECT_TRUE(plugin_->m_task_map[taskB]);
+    EXPECT_EQ(plugin_->g_task_status, 0);
+}
+
 TEST_F(MaintenanceManagerTest, TimerHandler_NonSIGALRM_Ignored)
 {
     using namespace WPEFramework::Plugin;
@@ -1375,10 +1393,31 @@ TEST_F(MaintenanceManagerInitializedEventTest, TaskExecutionThread_NoSecurityAge
     plugin_->task_execution_thread();
 }
 
-TEST_F(MaintenanceManagerTest, DeinitializeIARM_RemovesHandlerAndNullifiesInstance) {
-    plugin_->m_service = &service_; 
+TEST_F(MaintenanceManagerTest, DeinitializeIARM_StopsCallbacksAndIgnoresLaterEvents) {
+    plugin_->m_service = &service_;
+    Plugin::MaintenanceManager::_instance = &(*plugin_);
+    plugin_->setNotifyStatus(MAINTENANCE_STARTED);
     plugin_->DeinitializeIARM();
 
+    EXPECT_TRUE(Plugin::MaintenanceManager::m_iarmCallbacksStopped);
+    EXPECT_EQ(Plugin::MaintenanceManager::m_iarmCallbacksInFlight, 0);
+
+    IARM_Bus_MaintMGR_EventData_t eventData = {};
+    eventData.data.maintenance_module_status.status = MAINT_RFC_COMPLETE;
+    Plugin::MaintenanceManager::_MaintenanceMgrEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME,
+                                                            IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
+                                                            &eventData, sizeof(eventData));
+    EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_STARTED);
+}
+
+TEST_F(MaintenanceManagerInitializedEventTest, Deinitialize_NullifiesInstanceAndIgnoresLaterIarmEvent) {
+    plugin_->Deinitialize(&service_);
+    EXPECT_EQ(Plugin::MaintenanceManager::_instance, nullptr);
+
+    IARM_Bus_MaintMGR_EventData_t eventData = {};
+    Plugin::MaintenanceManager::_MaintenanceMgrEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME,
+                                                            IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
+                                                            &eventData, sizeof(eventData));
 }
 
 TEST_F(MaintenanceManagerTest, GetServiceState_Available) {

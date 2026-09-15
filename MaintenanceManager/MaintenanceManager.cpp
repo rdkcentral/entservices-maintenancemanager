@@ -276,7 +276,14 @@ namespace WPEFramework
         timer_t MaintenanceManager::timerid;
         string MaintenanceManager::currentTask;
         bool MaintenanceManager::g_task_timerCreated = false;
+        std::atomic<int> MaintenanceManager::g_armedTimerGeneration{0};
         std::mutex MaintenanceManager::m_timerCallbackMutex;
+#if defined(USE_IARMBUS) || defined(USE_IARM_BUS)
+        std::mutex MaintenanceManager::m_iarmCallbackMutex;
+        std::condition_variable MaintenanceManager::m_iarmCallbackCv;
+        int MaintenanceManager::m_iarmCallbacksInFlight = 0;
+        bool MaintenanceManager::m_iarmCallbacksStopped = false;
+#endif
 
         string task_param[] = {
             "RFC",
@@ -326,6 +333,12 @@ namespace WPEFramework
               m_authservicePlugin(nullptr)
         {
             MaintenanceManager::_instance = this;
+#if defined(USE_IARMBUS) || defined(USE_IARM_BUS)
+            {
+                std::lock_guard<std::mutex> iarmGuard(m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
+                m_iarmCallbacksStopped = false;
+            } // critical section end: m_iarmCallbackMutex
+#endif
 
             /**
              * @brief Invoking Plugin API register to WPEFRAMEWORK.
@@ -778,7 +791,9 @@ namespace WPEFramework
             sev.sigev_notify = SIGEV_THREAD;
             sev.sigev_notify_function = &MaintenanceManager::timerThreadCallback;
             sev.sigev_notify_attributes = nullptr;
-            sev.sigev_value.sival_ptr = &timerid;
+            /* Copied by the OS when the timer expires; a later start/stop bumps
+             * g_armedTimerGeneration so a queued callback with this value is ignored. */
+            sev.sigev_value.sival_int = g_armedTimerGeneration.load();
 
             if (timer_create(BASE_CLOCK, &sev, &timerid) == -1)
             {
@@ -802,17 +817,23 @@ namespace WPEFramework
         bool MaintenanceManager::task_startTimer()
         {
             bool status = false;
+            /* Recreate the timer so SIGEV_THREAD carries this start's generation in sv.
+             * timer_settime() cannot update sigev_value on an existing timer. */
+            g_armedTimerGeneration.fetch_add(1);
             if (g_task_timerCreated)
             {
-                MM_LOGINFO("Timer has already been created, start the Timer");
-            }
-            else
-            {
-                MM_LOGINFO("Timer has not been created already, create a new Timer.");
-                if (!maintenance_initTimer())
+                MM_LOGINFO("Recreating the task timer so the callback identity matches this start.");
+                if (timer_delete(timerid) == -1)
                 {
+                    MM_LOGERR("timer_delete() failed while recreating the Timer");
                     return status;
                 }
+                g_task_timerCreated = false;
+            }
+            MM_LOGINFO("Create a new Timer for this task start.");
+            if (!maintenance_initTimer())
+            {
+                return status;
             }
 
             struct itimerspec its;
@@ -858,6 +879,7 @@ namespace WPEFramework
             its.it_value.tv_sec = 0;
             its.it_value.tv_nsec = 0;
 
+            g_armedTimerGeneration.fetch_add(1);
             if (timer_settime(timerid, 0, &its, NULL) == -1)
             {
                 MM_LOGERR("timer_settime() failed to stop the Timer");
@@ -899,6 +921,7 @@ namespace WPEFramework
             }
             else
             {
+                g_armedTimerGeneration.fetch_add(1);
                 g_task_timerCreated = false;
                 MM_LOGINFO("Timer successfully deleted.");
                 status = true;
@@ -913,7 +936,7 @@ namespace WPEFramework
          *
          * @param signo The signal number received.
          */
-        void MaintenanceManager::timer_handler(int signo)
+        void MaintenanceManager::timer_handler(int signo, int armedGeneration)
         {
             /* Serializes with the drain performed in Deinitialize(); m_timerCallbackMutex is static
              * so it stays valid even if the MaintenanceManager instance is torn down concurrently. */
@@ -921,6 +944,12 @@ namespace WPEFramework
             if (MaintenanceManager::_instance == nullptr)
             {
                 MM_LOGWARN("timer_handler() invoked after plugin teardown; ignoring");
+                return;
+            }
+            if (armedGeneration >= 0 && armedGeneration != g_armedTimerGeneration.load())
+            {
+                MM_LOGINFO("Ignoring stale timer callback (generation %d, armed %d)",
+                           armedGeneration, g_armedTimerGeneration.load());
                 return;
             }
             if (signo == SIGALRM)
@@ -986,9 +1015,9 @@ namespace WPEFramework
          * Runs on a dedicated, normal (non-signal-handler) thread, so it can safely
          * delegate to timer_handler() which locks m_taskMapMutex.
          */
-        void MaintenanceManager::timerThreadCallback(union sigval /*sv*/)
+        void MaintenanceManager::timerThreadCallback(union sigval sv)
         {
-            timer_handler(SIGALRM);
+            timer_handler(SIGALRM, sv.sival_int);
         }
 
         /**
@@ -1618,7 +1647,10 @@ namespace WPEFramework
 
         MaintenanceManager::~MaintenanceManager()
         {
-            MaintenanceManager::_instance = nullptr;
+            {
+                std::lock_guard<std::mutex> tcGuard(MaintenanceManager::m_timerCallbackMutex); // critical section start: m_timerCallbackMutex publishes teardown
+                MaintenanceManager::_instance = nullptr;
+            } // critical section end: m_timerCallbackMutex
         }
 
         const string MaintenanceManager::Initialize(PluginHost::IShell *service)
@@ -1652,17 +1684,13 @@ namespace WPEFramework
             if (sigaction(SIGALRM, &newSigalrmAction, &m_prevSigalrmAction) == -1)
             {
                 MM_LOGERR("Failed to install SIGALRM safety-net handler");
-                /* Unwind what Initialize() has already acquired, mirroring Deinitialize(). */
-#if defined(USE_IARMBUS) || defined(USE_IARM_BUS)
-                DeinitializeIARM();
-#endif
-                if (m_service != nullptr)
-                {
-                    m_service->Release();
-                    m_service = nullptr;
-                }
+                /* Leave IARM, the worker, the timer, and m_service in place. Thunder deactivates
+                 * with reason Initialization Failed and calls Deinitialize(), which joins the
+                 * worker, deletes the timer, and Releases interfaces. Unwinding here would
+                 * double-Release m_service and leave the boot worker running. */
                 return string(_T("MaintenanceManager: Failed to install SIGALRM safety-net handler"));
             }
+            m_sigalrmSafetyNetInstalled = true;
 
             /* On Success; return empty to indicate no error text. */
             return (string());
@@ -1670,30 +1698,54 @@ namespace WPEFramework
 
         void MaintenanceManager::Deinitialize(PluginHost::IShell *service)
         {
+            /* Abort/join the worker before deleting the timer. Otherwise task_execution_thread() can
+             * enter task_startTimer() after g_task_timerCreated is cleared, recreate or arm a timer,
+             * and teardown would release the plugin without deleting that new timer.
+             * Join under m_threadMutex so we serialize with a terminal IARM path that may already
+             * be joining; do not join twice, and do not hold m_timerCallbackMutex across this join. */
+            stopMaintenanceTasks();
+            {
+                std::lock_guard<std::mutex> threadGuard(m_threadMutex); // critical section start: m_threadMutex guards m_thread join
+                if (m_thread.joinable())
+                {
+                    m_thread.join();
+                    MM_LOGINFO("Thread joined successfully");
+                }
+            } // critical section end: m_threadMutex
             if (!maintenance_deleteTimer())
             {
                 MM_LOGINFO("Failed to delete timer");
             }
             MM_LOGINFO("Timer Deleted on Deinitialization.");
+            if (m_sigalrmSafetyNetInstalled)
             {
-                /* timer_delete() does not wait for an already-in-flight SIGEV_THREAD callback to finish;
-                 * take/release the same static mutex timer_handler() holds for its whole body so we don't
-                 * proceed with teardown (nulling _instance, releasing m_service) while one is still running. */
-                std::lock_guard<std::mutex> tcGuard(MaintenanceManager::m_timerCallbackMutex); // critical section start: drains any in-flight timer_handler() call
-            } // critical section end: m_timerCallbackMutex
-            if (sigaction(SIGALRM, &m_prevSigalrmAction, nullptr) == -1)
-            {
-                MM_LOGWARN("Failed to restore previous SIGALRM disposition");
+                if (sigaction(SIGALRM, &m_prevSigalrmAction, nullptr) == -1)
+                {
+                    MM_LOGWARN("Failed to restore previous SIGALRM disposition");
+                }
+                m_sigalrmSafetyNetInstalled = false;
             }
 #if defined(USE_IARMBUS) || defined(USE_IARM_BUS)
-            stopMaintenanceTasks();
+            /* Wait for in-flight IARM handlers before nulling _instance (they may still be in
+             * m_thread.join() / onMaintenanceStatusChange()). Do not hold m_timerCallbackMutex
+             * across this wait. */
             DeinitializeIARM();
 #endif /* defined(USE_IARMBUS) || defined(USE_IARM_BUS) */
+            {
+                /* timer_delete() does not wait for a queued SIGEV_THREAD callback that has not yet
+                 * entered timer_handler(). Hold this mutex until _instance is nulled so a late
+                 * callback either waits here (then sees nullptr) or takes the mutex after we
+                 * release and still sees nullptr. Do not hold this mutex across the worker join. */
+                std::lock_guard<std::mutex> tcGuard(MaintenanceManager::m_timerCallbackMutex); // critical section start: m_timerCallbackMutex drains in-flight timer_handler() and publishes teardown
+                MaintenanceManager::_instance = nullptr;
+            } // critical section end: m_timerCallbackMutex
 
-            ASSERT(service == m_service);
-
-            m_service->Release();
-            m_service = nullptr;
+            if (m_service != nullptr)
+            {
+                ASSERT(service == m_service);
+                m_service->Release();
+                m_service = nullptr;
+            }
 
             if (m_authservicePlugin != nullptr)
             {
@@ -1705,6 +1757,10 @@ namespace WPEFramework
 #if defined(USE_IARMBUS) || defined(USE_IARM_BUS)
         void MaintenanceManager::InitializeIARM()
         {
+            {
+                std::lock_guard<std::mutex> iarmGuard(m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
+                m_iarmCallbacksStopped = false;
+            } // critical section end: m_iarmCallbackMutex
             if (Utils::IARM::init())
             {
                 IARM_Result_t res;
@@ -1794,15 +1850,43 @@ namespace WPEFramework
 
         void MaintenanceManager::_MaintenanceMgrEventHandler(const char *owner, IARM_EventId_t eventId, void *data, size_t len)
         {
-            if (MaintenanceManager::_instance)
-            {
-                MM_LOGWARN("IARM event Received with %d !", eventId);
-                MaintenanceManager::_instance->iarmEventHandler(owner, eventId, data, len);
-            }
-            else
+            struct IarmInFlightGuard {
+                bool active = false;
+                MaintenanceManager *instance = nullptr;
+                IarmInFlightGuard()
+                {
+                    std::lock_guard<std::mutex> iarmGuard(MaintenanceManager::m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
+                    if (MaintenanceManager::_instance == nullptr || MaintenanceManager::m_iarmCallbacksStopped)
+                    {
+                        return;
+                    }
+                    instance = MaintenanceManager::_instance;
+                    ++MaintenanceManager::m_iarmCallbacksInFlight;
+                    active = true;
+                }
+                ~IarmInFlightGuard()
+                {
+                    if (!active)
+                    {
+                        return;
+                    }
+                    std::lock_guard<std::mutex> iarmGuard(MaintenanceManager::m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
+                    --MaintenanceManager::m_iarmCallbacksInFlight;
+                    if (MaintenanceManager::m_iarmCallbacksInFlight == 0)
+                    {
+                        MaintenanceManager::m_iarmCallbackCv.notify_all();
+                    }
+                }
+                IarmInFlightGuard(const IarmInFlightGuard &) = delete;
+                IarmInFlightGuard &operator=(const IarmInFlightGuard &) = delete;
+            } inFlight;
+            if (!inFlight.active)
             {
                 MM_LOGWARN("WARNING - cannot handle IARM events without MaintenanceManager plugin instance!");
+                return;
             }
+            MM_LOGWARN("IARM event Received with %d !", eventId);
+            inFlight.instance->iarmEventHandler(owner, eventId, data, len);
         }
 
         void MaintenanceManager::iarmEventHandler(const char *owner, IARM_EventId_t eventId, void *data, size_t len)
@@ -2054,12 +2138,19 @@ namespace WPEFramework
         }
         void MaintenanceManager::DeinitializeIARM()
         {
+            {
+                std::lock_guard<std::mutex> iarmGuard(m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
+                m_iarmCallbacksStopped = true;
+            } // critical section end: m_iarmCallbackMutex
             if (Utils::IARM::isConnected())
             {
                 IARM_Result_t res;
                 IARM_CHECK(IARM_Bus_RemoveEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME, IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE, _MaintenanceMgrEventHandler));
-                MaintenanceManager::_instance = nullptr;
             }
+            {
+                std::unique_lock<std::mutex> iarmLock(m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
+                m_iarmCallbackCv.wait(iarmLock, [] { return MaintenanceManager::m_iarmCallbacksInFlight == 0; });
+            } // critical section end: m_iarmCallbackMutex
         }
 #endif /* defined(USE_IARMBUS) || defined(USE_IARM_BUS) */
 

@@ -22,6 +22,9 @@
 
 #include <stdint.h>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <map>
 #include <time.h>
 #include <signal.h>
@@ -294,13 +297,21 @@ namespace WPEFramework
             static int runScript(const std::string &script, const std::string &args, string *output = NULL, string *error = NULL, int timeout = 30000);
 
             /* Timer Implementations */
-            static void timer_handler(int signo);
+            static void timer_handler(int signo, int armedGeneration = -1); /* armedGeneration < 0 skips the stale-callback check (unit tests) */
             static void timerThreadCallback(union sigval sv); /* SIGEV_THREAD entry point: runs on a normal thread, safe to lock/allocate */
             static timer_t timerid;
             static string currentTask;
             static bool g_task_timerCreated;
-            static std::mutex m_timerCallbackMutex; /* Static (outlives any instance): serializes timer_handler() against Deinitialize() teardown so _instance can never be null-deref'd/use-after-freed */
+            static std::atomic<int> g_armedTimerGeneration; /* Bumped on start/stop/delete; copied into sigev sival_int so late SIGEV_THREAD callbacks can be ignored */
+            static std::mutex m_timerCallbackMutex; /* Static (outlives any instance): timer_handler() holds this for its body; Deinitialize() holds it while nulling _instance so queued SIGEV_THREAD callbacks cannot pass a stale non-null check */
+#if defined(USE_IARMBUS) || defined(USE_IARM_BUS)
+            static std::mutex m_iarmCallbackMutex; /* Serializes IARM handler entry/exit against DeinitializeIARM() wait */
+            static std::condition_variable m_iarmCallbackCv; /* Signalled when m_iarmCallbacksInFlight reaches 0 */
+            static int m_iarmCallbacksInFlight; /* Guarded by m_iarmCallbackMutex */
+            static bool m_iarmCallbacksStopped; /* Guarded by m_iarmCallbackMutex; set during DeinitializeIARM() so new handlers do not enter */
+#endif
             struct sigaction m_prevSigalrmAction {}; /* Previous SIGALRM disposition, saved by Initialize() and restored by Deinitialize() */
+            bool m_sigalrmSafetyNetInstalled = false; /* True only after sigaction() succeeds in Initialize(); Deinitialize() restores only then */
 
             bool maintenance_initTimer();
             bool task_startTimer();
