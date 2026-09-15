@@ -52,10 +52,10 @@
   - worker std::thread m_thread
   - task timer created by POSIX timer_create()/timer_settime()/timer_delete(), using SIGEV_THREAD so expiry runs timerThreadCallback() on a dedicated thread instead of a signal handler
   - condition variable task_thread for worker/event coordination
-  - seven single-purpose mutexes, each guarding one piece of shared state:
+  - eight single-purpose mutexes, each guarding one piece of shared state:
     - m_callMutex: g_currentMode/g_triggerMode; also serializes the task_execution_thread() loop
     - m_waiMutex: g_listen_to_deviceContextUpdate
-    - m_statusMutex: m_notify_status, g_task_status, g_is_critical_maintenance, g_is_reboot_pending, and worker start/join transitions
+    - m_statusMutex: m_notify_status, g_task_status, g_is_critical_maintenance, g_is_reboot_pending, g_unsolicited_complete, and worker start/join transitions
     - m_taskMapMutex: m_task_map
     - m_abortFlagMutex: m_abort_flag
     - m_maintenanceTypeMutex: g_maintenance_type (via getMaintenanceType()/setMaintenanceType())

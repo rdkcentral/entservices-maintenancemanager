@@ -100,7 +100,7 @@ Runtime status includes:
 |---|---|
 | `m_callMutex` | `g_currentMode` and `g_triggerMode`; also serializes the task-execution loop in `task_execution_thread()` |
 | `m_waiMutex` | `g_listen_to_deviceContextUpdate` (read/written by `task_execution_thread()` and `deviceInitializationContextEventHandler()`) |
-| `m_statusMutex` | `m_notify_status`, `g_task_status`, `g_is_critical_maintenance`, `g_is_reboot_pending`, and worker start/join transitions |
+| `m_statusMutex` | `m_notify_status`, `g_task_status`, `g_is_critical_maintenance`, `g_is_reboot_pending`, `g_unsolicited_complete`, and worker start/join transitions |
 | `m_taskMapMutex` | `m_task_map` (read/written from the JSON-RPC, IARM event, task-execution, and timer threads) |
 | `m_abortFlagMutex` | `m_abort_flag` (read/written from the JSON-RPC and task-execution threads) |
 | `m_maintenanceTypeMutex` | `g_maintenance_type` (via `getMaintenanceType()`/`setMaintenanceType()`) |

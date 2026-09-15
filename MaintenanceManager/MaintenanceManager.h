@@ -221,7 +221,7 @@ namespace WPEFramework
 #endif
             std::mutex m_callMutex; /* Guards g_currentMode/g_triggerMode and serializes the task-execution loop in task_execution_thread() */
             std::mutex m_waiMutex; /* Guards g_listen_to_deviceContextUpdate, read/written by task_execution_thread() and deviceInitializationContextEventHandler() */
-            std::mutex m_statusMutex; /* Guards m_notify_status, g_task_status, critical/reboot flags, and worker-join transitions */
+            std::mutex m_statusMutex; /* Guards status fields, g_unsolicited_complete, and worker lifecycle transitions */
             std::mutex m_taskMapMutex; /* Guards m_task_map, read/written from the JSON-RPC, IARM event, task-execution, and timer threads */
             std::mutex m_abortFlagMutex; /* Guards m_abort_flag, read/written from the JSON-RPC and task-execution threads */
             std::mutex m_maintenanceTypeMutex; /* Guards g_maintenance_type, which is read/written from multiple threads */
@@ -316,7 +316,7 @@ namespace WPEFramework
             pid_t callGetTaskPID(const char *taskname) { return getTaskPID(taskname); }
             void callInternetStatusChangeEventHandler(const JsonObject &parameters) { internetStatusChangeEventHandler(parameters); }
             int callAbortTask(const char *taskname, int sig_to_send) { return abortTask(taskname, sig_to_send); }
-            void setUnsolicitedComplete(bool value) { g_unsolicited_complete = value; }
+            void setUnsolicitedComplete(bool value) { std::lock_guard<std::mutex> statusGuard(m_statusMutex); g_unsolicited_complete = value; }
             WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *PublicGetThunderPluginHandle(const char *callsign)
             {
                 std::cout << "Inside PublicGetThunderPluginHandle" << std::endl;

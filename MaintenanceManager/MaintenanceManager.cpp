@@ -453,9 +453,17 @@ namespace WPEFramework
 				t2_event_d("SYST_ERR_MaintNetworkFail", 1);
 #endif
 				
-                if (UNSOLICITED_MAINTENANCE == getMaintenanceType() && !g_unsolicited_complete)
+                bool listenForNetwork = false;
                 {
-                    g_unsolicited_complete = true;
+                    std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards g_unsolicited_complete
+                    if (UNSOLICITED_MAINTENANCE == getMaintenanceType() && !g_unsolicited_complete)
+                    {
+                        g_unsolicited_complete = true;
+                        listenForNetwork = true;
+                    }
+                } // critical section end: m_statusMutex
+                if (listenForNetwork)
+                {
                     g_listen_to_nwevents = true;
                 }
                 return;
@@ -1718,6 +1726,7 @@ namespace WPEFramework
                 MaintenanceManager::g_is_critical_maintenance = "false";
                 MaintenanceManager::g_is_reboot_pending = "false";
                 MaintenanceManager::g_task_status = 0;
+                MaintenanceManager::g_unsolicited_complete = false;
             } // critical section end: m_statusMutex
             MaintenanceManager::g_epoch_time = "";
 
@@ -1746,16 +1755,14 @@ namespace WPEFramework
                 std::lock_guard<std::mutex> g(m_abortFlagMutex); // critical section start: m_abortFlagMutex guards m_abort_flag
                 MaintenanceManager::m_abort_flag = false;
             } // critical section end: m_abortFlagMutex
-            MaintenanceManager::g_unsolicited_complete = false;
-
             const string lastMaintenanceStatus = m_setting.getValue(LAST_MAINTENANCE_STATUS_KEY).String();
             if (skipUnsolicitedMaintenance(isMaintenanceReboot(), lastMaintenanceStatus))
             {
                 MM_LOGINFO("Skipping unsolicited maintenance at boot because previous maintenance status is complete and reboot reason is maintenance reboot");
                 m_statusMutex.lock(); // critical section start: m_statusMutex guards m_notify_status/g_task_status via onMaintenanceStatusChange()
                 MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_COMPLETE);
-                m_statusMutex.unlock(); // critical section end: m_statusMutex
                 MaintenanceManager::g_unsolicited_complete = true;
+                m_statusMutex.unlock(); // critical section end: m_statusMutex
                 return;
             }
 
@@ -2608,6 +2615,7 @@ namespace WPEFramework
             MM_LOGINFO("Invoke getMaintenanceMode");
             bool result = false;
             string softwareOptOutmode = "NONE";
+            std::lock_guard<std::mutex> guard(m_callMutex); // critical section start: m_callMutex guards g_currentMode/g_triggerMode for this function
             if (BACKGROUND_MODE != g_currentMode && FOREGROUND_MODE != g_currentMode)
             {
                 MM_LOGERR("Didnt get a valid Mode. Failed");
@@ -2618,7 +2626,6 @@ namespace WPEFramework
             }
             else
             {
-                std::lock_guard<std::mutex> guard(m_callMutex); // critical section start: m_callMutex guards g_currentMode/g_triggerMode for the rest of this function (ends at function return)
                 response["maintenanceMode"] = g_currentMode;
                 response["triggerMode"] = g_triggerMode;
 

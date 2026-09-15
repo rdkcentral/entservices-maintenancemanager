@@ -66,7 +66,7 @@
 - JSON-RPC handlers run on Thunder-managed dispatch thread(s), concurrently with the IARM event thread (`iarmEventHandler()`), the worker thread (`task_execution_thread()`, `m_thread`), and the timer thread (SIGEV_THREAD callback running `timer_handler()`).
 - Each piece of shared state has exactly one dedicated mutex:
   - `m_callMutex`: g_currentMode/g_triggerMode, and serializes the task-execution loop.
-  - `m_statusMutex`: m_notify_status, g_task_status, critical/reboot flags, and worker start/join transitions.
+  - `m_statusMutex`: m_notify_status, g_task_status, critical/reboot/unsolicited flags, and worker start/join transitions.
   - `m_taskMapMutex`: m_task_map, read/written from API, IARM-event, worker, and timer paths.
   - `m_abortFlagMutex`: m_abort_flag.
   - `m_waiMutex`: g_listen_to_deviceContextUpdate.
