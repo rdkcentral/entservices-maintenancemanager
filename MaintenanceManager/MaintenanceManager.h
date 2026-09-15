@@ -207,6 +207,8 @@ namespace WPEFramework
             bool m_abort_flag;
             uint16_t g_task_status;
             bool g_unsolicited_complete;
+            bool m_workerStartInProgress = false; /* Guarded by m_statusMutex while startMaintenance replaces m_thread */
+            bool m_workerJoinInProgress = false; /* Guarded by m_statusMutex while a terminal path joins m_thread */
             bool g_listen_to_nwevents = false;
             bool g_subscribed_for_nwevents = false;
             bool g_listen_to_deviceContextUpdate = false;
@@ -217,13 +219,14 @@ namespace WPEFramework
 #else
             bool g_suppress_maintenance_enabled = false;
 #endif
-            std::mutex m_callMutex; /* Guards g_currentMode/g_triggerMode/g_is_critical_maintenance/g_is_reboot_pending and serializes the task-execution loop in task_execution_thread() */
+            std::mutex m_callMutex; /* Guards g_currentMode/g_triggerMode and serializes the task-execution loop in task_execution_thread() */
             std::mutex m_waiMutex; /* Guards g_listen_to_deviceContextUpdate, read/written by task_execution_thread() and deviceInitializationContextEventHandler() */
-            std::mutex m_statusMutex; /* Guards m_notify_status and g_task_status, read/written from the JSON-RPC, IARM event, and task-execution threads */
+            std::mutex m_statusMutex; /* Guards m_notify_status, g_task_status, critical/reboot flags, and worker-join transitions */
             std::mutex m_taskMapMutex; /* Guards m_task_map, read/written from the JSON-RPC, IARM event, task-execution, and timer threads */
             std::mutex m_abortFlagMutex; /* Guards m_abort_flag, read/written from the JSON-RPC and task-execution threads */
             std::mutex m_maintenanceTypeMutex; /* Guards g_maintenance_type, which is read/written from multiple threads */
             std::mutex m_currentTaskMutex; /* Guards currentTask, written by task_execution_thread() and read by timer_handler() on the timer thread */
+            std::mutex m_threadMutex; /* Guards assignment, joinability checks, and joins of m_thread */
             std::condition_variable task_thread;
             std::thread m_thread;
 
@@ -307,8 +310,8 @@ namespace WPEFramework
             /* ---- Accessors ---- */
             bool testSetRFC(const char *rfc, const char *value, DATA_TYPE dataType) { return setRFC(rfc, value, dataType); }
             bool testReadRFC(const char *rfc) { return readRFC(rfc); }
-            Maint_notify_status_t getNotifyStatus() { return m_notify_status; }
-            void setNotifyStatus(Maint_notify_status_t status) { m_notify_status = status; }
+            Maint_notify_status_t getNotifyStatus() { std::lock_guard<std::mutex> statusGuard(m_statusMutex); return m_notify_status; }
+            void setNotifyStatus(Maint_notify_status_t status) { std::lock_guard<std::mutex> statusGuard(m_statusMutex); m_notify_status = status; }
             void testStartCriticalTasks() { startCriticalTasks(); }
             pid_t callGetTaskPID(const char *taskname) { return getTaskPID(taskname); }
             void callInternetStatusChangeEventHandler(const JsonObject &parameters) { internetStatusChangeEventHandler(parameters); }

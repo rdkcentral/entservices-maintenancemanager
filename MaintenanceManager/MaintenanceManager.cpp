@@ -468,7 +468,12 @@ namespace WPEFramework
                 m_statusMutex.unlock(); // critical section end: m_statusMutex
             }
 
-            MM_LOGINFO("Reboot_Pending :%s", g_is_reboot_pending.c_str());
+            string rebootPending;
+            {
+                std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards g_is_reboot_pending
+                rebootPending = g_is_reboot_pending;
+            } // critical section end: m_statusMutex
+            MM_LOGINFO("Reboot_Pending :%s", rebootPending.c_str());
             MM_LOGINFO("%s", UNSOLICITED_MAINTENANCE == getMaintenanceType() ? "---------------UNSOLICITED_MAINTENANCE--------------" : "=============SOLICITED_MAINTENANCE===============");
 
 			if (UNSOLICITED_MAINTENANCE != getMaintenanceType()) 
@@ -481,8 +486,11 @@ namespace WPEFramework
             if (!g_whoami_support_enabled && g_suppress_maintenance_enabled && skipFirmwareCheck)
             {
                 /* set the task status of Firmware Download */
-                SET_STATUS(g_task_status, SWUPDATE_SUCCESS);
-                SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
+                {
+                    std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards g_task_status
+                    SET_STATUS(g_task_status, SWUPDATE_SUCCESS);
+                    SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
+                } // critical section end: m_statusMutex
                 /* Skip Firmware Download Task and add other tasks */
                 tasks.push_back(task_names_foreground[TASK_RFC].c_str());
                 tasks.push_back(task_names_foreground[TASK_LOGUPLOAD].c_str());
@@ -1704,7 +1712,13 @@ namespace WPEFramework
             MaintenanceManager::g_currentMode = FOREGROUND_MODE;
             MaintenanceManager::g_triggerMode = "";
 
-            MaintenanceManager::m_notify_status = MAINTENANCE_IDLE;
+            {
+                std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards status and status flags
+                MaintenanceManager::m_notify_status = MAINTENANCE_IDLE;
+                MaintenanceManager::g_is_critical_maintenance = "false";
+                MaintenanceManager::g_is_reboot_pending = "false";
+                MaintenanceManager::g_task_status = 0;
+            } // critical section end: m_statusMutex
             MaintenanceManager::g_epoch_time = "";
 
             /* to know the maintenance is solicited or unsolicited */
@@ -1727,10 +1741,7 @@ namespace WPEFramework
                 MM_LOGINFO("OptOut Value Found as: %s", OptOutmode.c_str());
             }
 
-            MaintenanceManager::g_is_critical_maintenance = "false";
-            MaintenanceManager::g_is_reboot_pending = "false";
             MaintenanceManager::g_lastSuccessful_maint_time = "";
-            MaintenanceManager::g_task_status = 0;
             {
                 std::lock_guard<std::mutex> g(m_abortFlagMutex); // critical section start: m_abortFlagMutex guards m_abort_flag
                 MaintenanceManager::m_abort_flag = false;
@@ -1759,6 +1770,7 @@ namespace WPEFramework
 #ifdef ENABLE_TEST_THREAD_EXCEPTION
                 MM_TEST_THROW_THREAD_EXCEPTION();
 #endif
+                std::lock_guard<std::mutex> threadGuard(m_threadMutex); // critical section start: m_threadMutex guards m_thread assignment
                 m_thread = std::thread(&MaintenanceManager::task_execution_thread, _instance);
             }
             catch (const std::exception &e)
@@ -1788,6 +1800,8 @@ namespace WPEFramework
 
         void MaintenanceManager::iarmEventHandler(const char *owner, IARM_EventId_t eventId, void *data, size_t len)
         {
+            bool joinWorker = false;
+            Maint_notify_status_t terminalStatus = MAINTENANCE_STARTED;
             m_statusMutex.lock(); // critical section start: m_statusMutex guards m_notify_status/g_task_status for the rest of this function
             bool aborted = false;
             {
@@ -1796,7 +1810,6 @@ namespace WPEFramework
             } // critical section end: m_abortFlagMutex
             if (!aborted)
             {
-                Maint_notify_status_t notify_status = MAINTENANCE_STARTED;
                 IARM_Bus_MaintMGR_EventData_t *module_event_data = (IARM_Bus_MaintMGR_EventData_t *)data;
                 IARM_Maint_module_status_t module_status;
                 time_t successfulTime;
@@ -1960,7 +1973,7 @@ namespace WPEFramework
                         if ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS)
                         { // all tasks success
                             MM_LOGINFO("Maintenance Successfully Completed!!");
-                            notify_status = MAINTENANCE_COMPLETE;
+                            terminalStatus = MAINTENANCE_COMPLETE;
                             /*  we store the time in persistant location */
                             successfulTime = time(nullptr);
                             tm ltime = *localtime(&successfulTime);
@@ -1983,27 +1996,23 @@ namespace WPEFramework
                             if ((g_task_status & MAINTENANCE_TASK_SKIPPED) == MAINTENANCE_TASK_SKIPPED)
                             {
                                 MM_LOGINFO("There are Skipped Task. Maintenance Incomplete");
-                                notify_status = MAINTENANCE_INCOMPLETE;
+                                terminalStatus = MAINTENANCE_INCOMPLETE;
                             }
                             else
                             {
                                 MM_LOGINFO("Maintenance Ended with Errors");
-                                notify_status = MAINTENANCE_ERROR;
+                                terminalStatus = MAINTENANCE_ERROR;
                             }
                         }
 
                         MM_LOGINFO("ENDING MAINTENANCE CYCLE");
-                        if (m_thread.joinable())
-                        {
-                            m_thread.join();
-                            MM_LOGINFO("Thread joined successfully");
-                        }
+                        joinWorker = true;
+                        m_workerJoinInProgress = true;
 
                         if (getMaintenanceType() == UNSOLICITED_MAINTENANCE && !g_unsolicited_complete)
                         {
                             g_unsolicited_complete = true;
                         }
-                        MaintenanceManager::_instance->onMaintenanceStatusChange(notify_status);
                     }
                     else
                     {
@@ -2020,6 +2029,21 @@ namespace WPEFramework
                 MM_LOGINFO("Maintenance has been aborted. Hence ignoring the event");
             }
             m_statusMutex.unlock(); // critical section end: m_statusMutex
+            if (joinWorker)
+            {
+                std::lock_guard<std::mutex> threadGuard(m_threadMutex); // critical section start: m_threadMutex guards m_thread join
+                if (m_thread.joinable())
+                {
+                    m_thread.join();
+                    MM_LOGINFO("Thread joined successfully");
+                }
+            }
+            if (joinWorker)
+            {
+                std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards final status publication/join transition
+                MaintenanceManager::_instance->onMaintenanceStatusChange(terminalStatus);
+                m_workerJoinInProgress = false;
+            } // critical section end: m_statusMutex
         }
         void MaintenanceManager::DeinitializeIARM()
         {
@@ -2064,6 +2088,7 @@ namespace WPEFramework
                                                                   JsonObject &response)
         {
             bool result = false;
+            Maint_notify_status_t notifyStatus;
             string isCriticalMaintenance = "false";
             string isRebootPending = "false";
             string LastSuccessfulCompletionTime = "NA"; /* TODO : check max size to hold this */
@@ -2071,18 +2096,12 @@ namespace WPEFramework
             bool b_criticalMaintenace = false;
             bool b_rebootPending = false;
 
-            std::lock_guard<std::mutex> guard(m_callMutex); // critical section start: m_callMutex guards g_is_critical_maintenance/g_is_reboot_pending/persisted settings reads for the rest of this function (ends at function return)
-
-            /* Check if we have a critical maintenance */
-            if (!g_is_critical_maintenance.empty())
             {
+                std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex snapshots status and status flags
+                notifyStatus = m_notify_status;
                 isCriticalMaintenance = g_is_critical_maintenance;
-            }
-
-            if (!g_is_reboot_pending.empty())
-            {
                 isRebootPending = g_is_reboot_pending;
-            }
+            } // critical section end: m_statusMutex
 
             /* Get the last SuccessfulCompletion time from Persistant location */
             if (m_setting.containsSync("LastSuccessfulCompletionTime"))
@@ -2105,9 +2124,9 @@ namespace WPEFramework
                 b_rebootPending = true;
             }
 
-            response["maintenanceStatus"] = notifyStatusToString(m_notify_status);
+            response["maintenanceStatus"] = notifyStatusToString(notifyStatus);
 
-			if (notifyStatusToString(m_notify_status) == "MAINTENANCE_INCOMPLETE")
+			if (notifyStatusToString(notifyStatus) == "MAINTENANCE_INCOMPLETE")
 			{
 				t2_event_d("SYST_INFO_MaintnceIncmpl", 1);
 			}
@@ -2691,12 +2710,17 @@ namespace WPEFramework
                 }
                 MM_LOGINFO("setMaintenanceMode called: maintenanceMode=%s, optOut=%s, triggerMode=%s", new_mode.c_str(), new_optout_state.c_str(), new_trigger_mode.c_str());
 
+                Maint_notify_status_t notifyStatus;
+                {
+                    std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex snapshots m_notify_status
+                    notifyStatus = m_notify_status;
+                } // critical section end: m_statusMutex
                 std::lock_guard<std::mutex> guard(m_callMutex); // critical section start: m_callMutex guards g_triggerMode/g_currentMode for the rest of this function (ends at function return)
                 g_triggerMode = std::move(new_trigger_mode); // Update inside mutex lock
 
                 /* check if maintenance is on progress or not */
                 /* if in progress restrict the same */
-                if (MAINTENANCE_STARTED != m_notify_status)
+                if (MAINTENANCE_STARTED != notifyStatus)
                 {
                     MM_LOGINFO("SetMaintenanceMode new_mode = %s", new_mode.c_str());
 
@@ -2784,6 +2808,8 @@ namespace WPEFramework
                                                       JsonObject &response)
         {
             bool result = false;
+            bool startWorker = false;
+            string prev_critical_maintenance;
             /* check what mode we currently have */
             string current_mode = "";
 
@@ -2792,8 +2818,10 @@ namespace WPEFramework
             /* Lock so that m_notify_status will not be updated  further */
             m_statusMutex.lock(); // critical section start: m_statusMutex guards m_notify_status/g_task_status for the rest of this function
 
-            if (MAINTENANCE_STARTED != m_notify_status && g_unsolicited_complete)
+            if (MAINTENANCE_STARTED != m_notify_status && g_unsolicited_complete &&
+                !m_workerStartInProgress && !m_workerJoinInProgress)
             {
+                m_workerStartInProgress = true;
                 {
                     std::lock_guard<std::mutex> guard(m_callMutex); // critical section start: m_callMutex guards g_triggerMode
                     MM_LOGINFO("startMaintenance triggered with %s TriggerMode", g_triggerMode.empty()?"EMPTY":g_triggerMode.c_str());
@@ -2812,38 +2840,44 @@ namespace WPEFramework
                 g_is_reboot_pending = "true";
 
                 /* Save previous value before overwriting, for rollback on thread creation failure */
-                string prev_critical_maintenance = g_is_critical_maintenance;
+                prev_critical_maintenance = g_is_critical_maintenance;
                 /* we set this to false */
                 g_is_critical_maintenance = "false";
 
-                /* if there is any active thread, join it before executing the tasks from startMaintenance
-                 * especially when device is in offline mode*/
-                if (m_thread.joinable())
-                {
-                    m_thread.join();
-                    MM_LOGINFO("Thread joined successfully");
-                }
-
-                try
-                {
-#ifdef ENABLE_TEST_THREAD_EXCEPTION
-                    MM_TEST_THROW_THREAD_EXCEPTION();
-#endif
-                    m_thread = std::thread(&MaintenanceManager::task_execution_thread, _instance);
-                    result = true;
-                }
-                catch (const std::exception &e)
-                {
-                    MM_LOGERR("Failed to create task execution thread in startMaintenance: [%s] %s", typeid(e).name(), e.what());
-                    g_is_critical_maintenance = std::move(prev_critical_maintenance);
-                    result = false;
-                }
+                startWorker = true;
             }
             else
             {
                 MM_LOGINFO("Already a maintenance is in Progress. Please wait for it to complete !!");
             }
             m_statusMutex.unlock(); // critical section end: m_statusMutex
+
+            if (startWorker)
+            {
+                try
+                {
+#ifdef ENABLE_TEST_THREAD_EXCEPTION
+                    MM_TEST_THROW_THREAD_EXCEPTION();
+#endif
+                    std::lock_guard<std::mutex> threadGuard(m_threadMutex); // critical section start: m_threadMutex guards m_thread join/replacement
+                    if (m_thread.joinable())
+                    {
+                        m_thread.join();
+                        MM_LOGINFO("Thread joined successfully");
+                    }
+                    m_thread = std::thread(&MaintenanceManager::task_execution_thread, _instance);
+                    result = true;
+                }
+                catch (const std::exception &e)
+                {
+                    MM_LOGERR("Failed to create task execution thread in startMaintenance: [%s] %s", typeid(e).name(), e.what());
+                    std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards start rollback
+                    g_is_critical_maintenance = std::move(prev_critical_maintenance);
+                } // critical section end: m_statusMutex
+
+                std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards start transition
+                m_workerStartInProgress = false;
+            } // critical section end: m_statusMutex
 #if defined(ENABLE_JOURNAL_LOGGING)
             MM_RETURN_RESPONSE(result);
 #endif
@@ -2880,9 +2914,11 @@ namespace WPEFramework
             
             /* run only when the maintenance status is MAINTENANCE_STARTED */
             m_statusMutex.lock(); // critical section start: m_statusMutex guards m_notify_status/g_task_status for the rest of this function
-            if (MAINTENANCE_STARTED == m_notify_status)
+            if (MAINTENANCE_STARTED == m_notify_status &&
+                !m_workerStartInProgress && !m_workerJoinInProgress)
             {
                 MM_LOGINFO("Stopping maintenance activities");
+                m_workerJoinInProgress = true;
                 // Set the condition flag m_abort_flag to true
                 {
                     std::lock_guard<std::mutex> g(m_abortFlagMutex); // critical section start: m_abortFlagMutex guards m_abort_flag
@@ -2939,23 +2975,32 @@ namespace WPEFramework
                     MM_LOGERR("task_stopTimer() did not stop the Timer");
                 }
                 task_thread.notify_one();
-                if (m_thread.joinable())
-                {
-                    m_thread.join();
-                    MM_LOGINFO("Thread joined successfully");
-                }
                 if (UNSOLICITED_MAINTENANCE == getMaintenanceType() && !g_unsolicited_complete)
                 {
                     g_unsolicited_complete = true;
                 }
-                MM_LOGINFO("Maintenance has been stopped. Hence setting maintenance status to MAINTENANCE_ERROR");
-                MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_ERROR);
             }
             else
             {
                 MM_LOGINFO("Maintenance Status is not MAINTENANCE_STARTED, Hence can not stop the Maintenance execution");
             }
             m_statusMutex.unlock(); // critical section end: m_statusMutex
+            if (result)
+            {
+                std::lock_guard<std::mutex> threadGuard(m_threadMutex); // critical section start: m_threadMutex guards m_thread join
+                if (m_thread.joinable())
+                {
+                    m_thread.join();
+                    MM_LOGINFO("Thread joined successfully");
+                }
+            }
+            if (result)
+            {
+                std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards final status publication/join transition
+                MM_LOGINFO("Maintenance has been stopped. Hence setting maintenance status to MAINTENANCE_ERROR");
+                MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_ERROR);
+                m_workerJoinInProgress = false;
+            } // critical section end: m_statusMutex
             return result;
         }
 

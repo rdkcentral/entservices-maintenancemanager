@@ -98,13 +98,14 @@ Runtime status includes:
 
 | Mutex | Protects |
 |---|---|
-| `m_callMutex` | `g_currentMode`, `g_triggerMode`, `g_is_critical_maintenance`, `g_is_reboot_pending`; also serializes the task-execution loop in `task_execution_thread()` |
+| `m_callMutex` | `g_currentMode` and `g_triggerMode`; also serializes the task-execution loop in `task_execution_thread()` |
 | `m_waiMutex` | `g_listen_to_deviceContextUpdate` (read/written by `task_execution_thread()` and `deviceInitializationContextEventHandler()`) |
-| `m_statusMutex` | `m_notify_status` and `g_task_status` (read/written from the JSON-RPC, IARM event, and task-execution threads) |
+| `m_statusMutex` | `m_notify_status`, `g_task_status`, `g_is_critical_maintenance`, `g_is_reboot_pending`, and worker start/join transitions |
 | `m_taskMapMutex` | `m_task_map` (read/written from the JSON-RPC, IARM event, task-execution, and timer threads) |
 | `m_abortFlagMutex` | `m_abort_flag` (read/written from the JSON-RPC and task-execution threads) |
 | `m_maintenanceTypeMutex` | `g_maintenance_type` (via `getMaintenanceType()`/`setMaintenanceType()`) |
 | `m_currentTaskMutex` | `currentTask` (written by `task_execution_thread()`, read by `timer_handler()` on the timer thread) |
+| `m_threadMutex` | Assignment, joinability checks, and joins of `m_thread` |
 | `m_timerCallbackMutex` (static) | Serializes `timer_handler()` against the teardown drain in `Deinitialize()`, so a still-running SIGEV_THREAD callback can never see a null/freed `_instance` |
 
 Every critical section in the source is bracketed with a `// critical section start/end: <mutex>` comment at the lock/unlock (or `lock_guard` scope) to make the boundary explicit.
@@ -115,6 +116,7 @@ Every critical section in the source is bracketed with a `// critical section st
 
 - Established order: `m_statusMutex` is acquired before `m_callMutex` when both are needed (see `startMaintenance()`).
 - `task_execution_thread()` holds `m_callMutex` for its whole loop; it explicitly `unlock()`s/`lock()`s around any `m_statusMutex` acquisition so the two are never held at once, avoiding a lock-order inversion (Coverity `ORDER_REVERSAL`).
+- Terminal and start paths release `m_statusMutex` before taking `m_threadMutex` for a blocking join; transition flags reject concurrent start/stop operations during that interval.
 - The per-purpose mutexes (`m_taskMapMutex`, `m_abortFlagMutex`, `m_maintenanceTypeMutex`, `m_currentTaskMutex`) are leaf locks: never held while acquiring another mutex.
 
 ## JSON-RPC API
