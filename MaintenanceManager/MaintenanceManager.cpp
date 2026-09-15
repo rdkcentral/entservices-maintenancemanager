@@ -976,6 +976,10 @@ namespace WPEFramework
                 bool ignoreEvent = false;
                 if (failedTask)
                 {
+                    /* Same order as iarmEventHandler()/stopMaintenanceTasks(): m_statusMutex then
+                     * m_taskMapMutex. Coverity treats m_task_map as written under m_statusMutex
+                     * on those paths; taking only m_taskMapMutex here is MISSING_LOCK. */
+                    std::lock_guard<std::mutex> stGuard(MaintenanceManager::_instance->m_statusMutex); // critical section start: m_statusMutex before m_taskMapMutex
                     /* Safe here: timer_handler() only ever runs on a normal thread (SIGEV_THREAD
                      * callback, or a direct unit-test call), never inside a signal handler. */
                     std::lock_guard<std::mutex> tmGuard(MaintenanceManager::_instance->m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
@@ -986,19 +990,15 @@ namespace WPEFramework
                     else
                     {
                         MaintenanceManager::_instance->m_task_map[failedTask] = false;
+                        SET_STATUS(MaintenanceManager::_instance->g_task_status, complete_status);
                     }
-                } // critical section end: m_taskMapMutex
+                } // critical section end: m_taskMapMutex, m_statusMutex
                 if (failedTask && ignoreEvent)
                 {
                     MM_LOGINFO("Ignoring Error Event for Task: %s", failedTask);
                 }
                 else if (failedTask)
                 {
-                    {
-                        /* g_task_status is shared with iarmEventHandler()/task_execution_thread(); guard every update. */
-                        std::lock_guard<std::mutex> stGuard(MaintenanceManager::_instance->m_statusMutex); // critical section start: m_statusMutex guards g_task_status
-                        SET_STATUS(MaintenanceManager::_instance->g_task_status, complete_status);
-                    } // critical section end: m_statusMutex
                     MaintenanceManager::_instance->task_thread.notify_one();
                     MM_LOGINFO("Set %s Task to ERROR", failedTask);
                 }
