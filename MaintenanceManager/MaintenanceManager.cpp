@@ -3138,7 +3138,10 @@ namespace WPEFramework
             {
                 std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards final status publication/join transition
                 MM_LOGINFO("Maintenance has been stopped. Hence setting maintenance status to MAINTENANCE_ERROR");
-                MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_ERROR);
+                if (MaintenanceManager::_instance != nullptr)
+                {
+                    MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_ERROR);
+                }
                 m_workerJoinInProgress = false;
             } // critical section end: m_statusMutex
             return result;
