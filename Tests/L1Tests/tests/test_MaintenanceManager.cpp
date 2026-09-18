@@ -552,7 +552,6 @@ TEST_F(MaintenanceManagerTest, stopMaintenanceRPC_STARTED2ERROR)
 {
     Maint_notify_status_t status = MAINTENANCE_STARTED;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
-    plugin_->m_service = &service_;
     plugin_->setNotifyStatus(status);
     EXPECT_EQ(Core::ERROR_NONE, handler_.Invoke(connection, _T("org.rdk.MaintenanceManager.1.getMaintenanceActivityStatus"), _T("{}"), response_));
     EXPECT_EQ(response_, "{\"maintenanceStatus\":\"MAINTENANCE_STARTED\",\"LastSuccessfulCompletionTime\":0,\"isCriticalMaintenance\":false,\"isRebootPending\":false,\"success\":true}");
@@ -1396,7 +1395,6 @@ TEST_F(MaintenanceManagerInitializedEventTest, TaskExecutionThread_NoSecurityAge
 }
 
 TEST_F(MaintenanceManagerTest, DeinitializeIARM_StopsCallbacksAndIgnoresLaterEvents) {
-    plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
     plugin_->setNotifyStatus(MAINTENANCE_STARTED);
     plugin_->DeinitializeIARM();
@@ -1412,17 +1410,14 @@ TEST_F(MaintenanceManagerTest, DeinitializeIARM_StopsCallbacksAndIgnoresLaterEve
     EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_STARTED);
 }
 
-/* Do not use MaintenanceManagerInitializedEventTest here: that fixture Activate()s the
- * dispatcher, and Deinitialize()/sendNotify through ServiceMock hits unimplemented
- * pure-virtuals ("pure virtual method called" / abort). */
+/* Avoid MaintenanceManagerInitializedEventTest: Activate()d dispatcher + ServiceMock
+ * can abort with "pure virtual method called". */
 TEST_F(MaintenanceManagerTest, Deinitialize_NullifiesInstanceAndIgnoresLaterIarmEvent) {
-    plugin_->m_service = &service_;
     Plugin::MaintenanceManager::_instance = &(*plugin_);
     plugin_->setNotifyStatus(MAINTENANCE_IDLE);
 
     plugin_->Deinitialize(&service_);
     EXPECT_EQ(Plugin::MaintenanceManager::_instance, nullptr);
-    EXPECT_EQ(plugin_->m_service, nullptr);
 
     IARM_Bus_MaintMGR_EventData_t eventData = {};
     Plugin::MaintenanceManager::_MaintenanceMgrEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME,
