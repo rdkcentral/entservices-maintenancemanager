@@ -2132,7 +2132,20 @@ namespace WPEFramework
             if (joinWorker)
             {
                 std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards final status publication/join transition
-                MaintenanceManager::_instance->onMaintenanceStatusChange(terminalStatus);
+                bool aborted = false;
+                {
+                    std::lock_guard<std::mutex> g(m_abortFlagMutex); // critical section start: m_abortFlagMutex guards m_abort_flag
+                    aborted = m_abort_flag;
+                } // critical section end: m_abortFlagMutex
+                /* Stop wins: do not publish COMPLETE/INCOMPLETE over an in-progress stop. */
+                if (aborted)
+                {
+                    MaintenanceManager::_instance->onMaintenanceStatusChange(MAINTENANCE_ERROR);
+                }
+                else
+                {
+                    MaintenanceManager::_instance->onMaintenanceStatusChange(terminalStatus);
+                }
                 m_workerJoinInProgress = false;
             } // critical section end: m_statusMutex
         }
@@ -2917,7 +2930,7 @@ namespace WPEFramework
             m_statusMutex.lock(); // critical section start: m_statusMutex guards m_notify_status/g_task_status for the rest of this function
 
             if (MAINTENANCE_STARTED != m_notify_status && g_unsolicited_complete &&
-                !m_workerStartInProgress && !m_workerJoinInProgress)
+                !m_workerStartInProgress)
             {
                 m_workerStartInProgress = true;
                 {
@@ -2946,7 +2959,18 @@ namespace WPEFramework
             }
             else
             {
-                MM_LOGINFO("Already a maintenance is in Progress. Please wait for it to complete !!");
+                if (MAINTENANCE_STARTED == m_notify_status)
+                {
+                    MM_LOGINFO("Already a maintenance is in Progress. Please wait for it to complete !!");
+                }
+                else if (!g_unsolicited_complete)
+                {
+                    MM_LOGINFO("Unsolicited maintenance has not completed yet. Cannot start solicited maintenance.");
+                }
+                else
+                {
+                    MM_LOGINFO("startMaintenance is already in progress. Please wait.");
+                }
             }
             m_statusMutex.unlock(); // critical section end: m_statusMutex
 
@@ -3010,10 +3034,9 @@ namespace WPEFramework
             bool task_status[3] = {false};
             bool result = false;
             
-            /* run only when the maintenance status is MAINTENANCE_STARTED */
+            /* Same gate as develop: only MAINTENANCE_STARTED. Join flags serialize join(), they do not veto stop. */
             m_statusMutex.lock(); // critical section start: m_statusMutex guards m_notify_status/g_task_status for the rest of this function
-            if (MAINTENANCE_STARTED == m_notify_status &&
-                !m_workerStartInProgress && !m_workerJoinInProgress)
+            if (MAINTENANCE_STARTED == m_notify_status)
             {
                 MM_LOGINFO("Stopping maintenance activities");
                 m_workerJoinInProgress = true;
@@ -3022,6 +3045,10 @@ namespace WPEFramework
                     std::lock_guard<std::mutex> g(m_abortFlagMutex); // critical section start: m_abortFlagMutex guards m_abort_flag
                     m_abort_flag = true;
                 } // critical section end: m_abortFlagMutex
+                {
+                    std::lock_guard<std::mutex> wailck(m_waiMutex); // critical section start: m_waiMutex guards g_listen_to_deviceContextUpdate
+                    g_listen_to_deviceContextUpdate = false;
+                } // critical section end: m_waiMutex
                 {
                     std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
                     auto task_status_RFC = m_task_map.find(task_names_foreground[TASK_RFC].c_str());
@@ -3080,11 +3107,13 @@ namespace WPEFramework
             }
             else
             {
-                MM_LOGINFO("Maintenance Status is not MAINTENANCE_STARTED, Hence can not stop the Maintenance execution");
+                MM_LOGINFO("Maintenance Status is %s, Hence can not stop the Maintenance execution",
+                           notifyStatusToString(m_notify_status).c_str());
             }
             m_statusMutex.unlock(); // critical section end: m_statusMutex
             if (result)
             {
+                /* Serialize with IARM/start joins; joinable() avoids joining twice. */
                 std::lock_guard<std::mutex> threadGuard(m_threadMutex); // critical section start: m_threadMutex guards m_thread join
                 if (m_thread.joinable())
                 {
