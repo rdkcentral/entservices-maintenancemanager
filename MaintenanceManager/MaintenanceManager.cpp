@@ -3074,6 +3074,8 @@ namespace WPEFramework
                 {
                     MM_LOGINFO("task status [%d]  = %s Task Name %s", i, (task_status[i]) ? "true" : "false", task_names[i].c_str());
                 }
+                /* Abort every active task. An earlier slot can stay true after an error
+                 * or INPROGRESS event while a later task is the one actually running. */
                 for (i = 0; i < 3; i++)
                 {
                     if (task_status[i])
@@ -3086,8 +3088,6 @@ namespace WPEFramework
                             std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map (ends at this block's closing brace)
                             m_task_map[task_names_foreground[i].c_str()] = false; // set it to false
                         }
-                        /* No need to loop again */
-                        break;
                     }
                     else
                     {
