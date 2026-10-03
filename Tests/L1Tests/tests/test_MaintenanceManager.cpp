@@ -19,8 +19,13 @@
  **/
 
 #include "gtest/gtest.h"
+#include <cerrno>
+#include <csignal>
+#include <dirent.h>
 #include <fstream>
 #include <iostream>
+#include <sys/wait.h>
+#include <unistd.h>
 #include "FactoriesImplementation.h"
 #include "../../../MaintenanceManager/MaintenanceManager.cpp"
 #include "../../../MaintenanceManager/MaintenanceManager.h"
@@ -566,6 +571,131 @@ TEST_F(MaintenanceManagerTest, stopMaintenanceRPC_STARTED2ERROR)
     EXPECT_EQ(Core::ERROR_NONE, handler_.Invoke(connection, _T("org.rdk.MaintenanceManager.1.stopMaintenance"), _T("{}"), response_));
     EXPECT_EQ(Core::ERROR_NONE, handler_.Invoke(connection, _T("org.rdk.MaintenanceManager.1.getMaintenanceActivityStatus"), _T("{}"), response_));
     EXPECT_EQ(response_, "{\"maintenanceStatus\":\"MAINTENANCE_ERROR\",\"LastSuccessfulCompletionTime\":0,\"isCriticalMaintenance\":false,\"isRebootPending\":false,\"success\":true}");
+}
+
+/* RFC and firmware update can both be marked active: an error event leaves the
+ * earlier slot true, and an INPROGRESS event can mark another module active.
+ * stopMaintenanceTasks() must signal every active name, not only the first. */
+TEST_F(MaintenanceManagerTest, stopMaintenanceTasks_AbortsEveryActiveTask)
+{
+    DIR *proc = opendir("/proc");
+    if (proc == nullptr)
+    {
+        std::cout << "stopMaintenanceTasks_AbortsEveryActiveTask skipped: /proc is unavailable" << std::endl;
+        return;
+    }
+    closedir(proc);
+
+    if (plugin_->callGetTaskPID("rfcMgr") != static_cast<pid_t>(-1) ||
+        plugin_->callGetTaskPID("rdkvfwupgrader") != static_cast<pid_t>(-1))
+    {
+        std::cout << "stopMaintenanceTasks_AbortsEveryActiveTask skipped: host already has rfcMgr or rdkvfwupgrader" << std::endl;
+        return;
+    }
+
+    const auto spawnSleeper = [](const char *argv0) -> pid_t {
+        pid_t pid = fork();
+        if (pid == 0)
+        {
+            execl("/bin/sleep", argv0, "30", static_cast<char *>(nullptr));
+            _exit(127);
+        }
+        return pid;
+    };
+
+    pid_t rfcPid = spawnSleeper("rfcMgr");
+    ASSERT_GT(rfcPid, 0);
+    pid_t fwPid = spawnSleeper("rdkvfwupgrader");
+    if (fwPid <= 0)
+    {
+        kill(rfcPid, SIGKILL);
+        waitpid(rfcPid, nullptr, 0);
+        FAIL() << "failed to spawn rdkvfwupgrader sleeper";
+        return;
+    }
+
+    bool rfcCollected = false;
+    bool fwCollected = false;
+    const auto reap = [&]() {
+        if (!rfcCollected)
+        {
+            if (kill(rfcPid, 0) == 0)
+            {
+                kill(rfcPid, SIGKILL);
+            }
+            waitpid(rfcPid, nullptr, 0);
+            rfcCollected = true;
+        }
+        if (!fwCollected)
+        {
+            if (kill(fwPid, 0) == 0)
+            {
+                kill(fwPid, SIGKILL);
+            }
+            waitpid(fwPid, nullptr, 0);
+            fwCollected = true;
+        }
+    };
+
+    bool rfcVisible = false;
+    bool fwVisible = false;
+    for (int attempt = 0; attempt < 50 && !(rfcVisible && fwVisible); ++attempt)
+    {
+        rfcVisible = plugin_->callGetTaskPID("rfcMgr") == rfcPid;
+        fwVisible = plugin_->callGetTaskPID("rdkvfwupgrader") == fwPid;
+        if (!(rfcVisible && fwVisible))
+        {
+            usleep(100000);
+        }
+    }
+    if (!rfcVisible || !fwVisible)
+    {
+        reap();
+        FAIL() << "spawned task processes did not appear in /proc";
+        return;
+    }
+
+    Plugin::MaintenanceManager::_instance = &(*plugin_);
+    plugin_->setNotifyStatus(MAINTENANCE_STARTED);
+    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()] = true;
+    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_SWUPDATE].c_str()] = true;
+    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_LOGUPLOAD].c_str()] = false;
+
+    EXPECT_TRUE(plugin_->stopMaintenanceTasks());
+    EXPECT_FALSE(plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()]);
+    EXPECT_FALSE(plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_SWUPDATE].c_str()]);
+    EXPECT_FALSE(plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_LOGUPLOAD].c_str()]);
+    EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_ERROR);
+
+    int rfcStatus = 0;
+    int fwStatus = 0;
+    pid_t rfcReaped = -1;
+    pid_t fwReaped = -1;
+    for (int attempt = 0; attempt < 20 && (rfcReaped != rfcPid || fwReaped != fwPid); ++attempt)
+    {
+        if (rfcReaped != rfcPid)
+        {
+            rfcReaped = waitpid(rfcPid, &rfcStatus, WNOHANG);
+        }
+        if (fwReaped != fwPid)
+        {
+            fwReaped = waitpid(fwPid, &fwStatus, WNOHANG);
+        }
+        if (rfcReaped != rfcPid || fwReaped != fwPid)
+        {
+            usleep(50000);
+        }
+    }
+    rfcCollected = rfcReaped == rfcPid;
+    fwCollected = fwReaped == fwPid;
+
+    EXPECT_EQ(rfcReaped, rfcPid);
+    EXPECT_TRUE(rfcCollected && WIFSIGNALED(rfcStatus) && WTERMSIG(rfcStatus) == SIGUSR1);
+    EXPECT_EQ(fwReaped, fwPid);
+    EXPECT_TRUE(fwCollected && WIFSIGNALED(fwStatus) && WTERMSIG(fwStatus) == SIGUSR1);
+
+    reap();
+    Plugin::MaintenanceManager::_instance = nullptr;
 }
 
 /* ---- startMaintenance() JsonRPC ---- */
