@@ -573,9 +573,11 @@ TEST_F(MaintenanceManagerTest, stopMaintenanceRPC_STARTED2ERROR)
     EXPECT_EQ(response_, "{\"maintenanceStatus\":\"MAINTENANCE_ERROR\",\"LastSuccessfulCompletionTime\":0,\"isCriticalMaintenance\":false,\"isRebootPending\":false,\"success\":true}");
 }
 
+#if defined(GTEST_ENABLE)
 /* RFC and firmware update can both be marked active: an error event leaves the
  * earlier slot true, and an INPROGRESS event can mark another module active.
- * stopMaintenanceTasks() must signal every active name, not only the first. */
+ * stopMaintenanceTasks() must signal every active name, not only the first.
+ * GTEST_ENABLE makes m_task_map and stopMaintenanceTasks() public. */
 TEST_F(MaintenanceManagerTest, stopMaintenanceTasks_AbortsEveryActiveTask)
 {
     DIR *proc = opendir("/proc");
@@ -697,6 +699,7 @@ TEST_F(MaintenanceManagerTest, stopMaintenanceTasks_AbortsEveryActiveTask)
     reap();
     Plugin::MaintenanceManager::_instance = nullptr;
 }
+#endif /* GTEST_ENABLE */
 
 /* ---- startMaintenance() JsonRPC ---- */
 TEST_F(MaintenanceManagerTest, DISABLED_startMaintenanceRPC_unsolicNotCompleted)
