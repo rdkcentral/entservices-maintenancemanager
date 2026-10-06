@@ -129,7 +129,6 @@ touch rdk/ds/audioOutputPort.hpp
 touch rdk/ds/compositeIn.hpp
 touch rdk/ds/dsDisplay.h
 touch rdk/ds/dsError.h
-touch rdk/ds/dsMgr.h
 touch rdk/ds/dsTypes.h
 touch rdk/ds/dsUtl.h
 touch rdk/ds/exception.hpp
