@@ -203,7 +203,7 @@ namespace WPEFramework
             string g_lastSuccessful_maint_time;
             string g_epoch_time;
 
-            IARM_Bus_MaintMGR_EventData_t *g_maintenance_data;
+            IARM_Bus_MaintMGR_EventData_t *g_maintenance_data = nullptr;
             Maint_notify_status_t m_notify_status;
             Maintenance_Type_t g_maintenance_type;
             static cSettings m_setting;
@@ -245,6 +245,8 @@ namespace WPEFramework
 
             bool isDeviceOnline();
             void task_execution_thread();
+            /* Publishes ERROR or INCOMPLETE when the worker finishes a cycle that no IARM event closed. Caller must not hold m_callMutex. */
+            void publishWorkerTerminalStatus();
             void requestSystemReboot();
             void maintenanceManagerOnBootup();
             bool checkAutoRebootFlag();
