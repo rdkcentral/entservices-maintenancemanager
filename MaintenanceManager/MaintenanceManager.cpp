@@ -325,7 +325,8 @@ namespace WPEFramework
          * Register MaintenanceManager module as wpeframework plugin
          */
         MaintenanceManager::MaintenanceManager()
-            : PluginHost::JSONRPC(), 
+            : PluginHost::JSONRPC(),
+              g_maintenance_data(nullptr),
               m_notify_status(MAINTENANCE_IDLE),
               m_abort_flag(false),
               g_task_status(0),
@@ -523,7 +524,7 @@ namespace WPEFramework
                 tasks.push_back(task_names_foreground[TASK_LOGUPLOAD].c_str());
             }
 
-            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the whole task-execution loop below, released only during task_thread.wait()/the temporary unlock() further down; ends when task_execution_thread() returns
+            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the task-execution loop; released across task_thread.wait(), the retry sleep, and each m_statusMutex acquisition; ends when task_execution_thread() returns
             auto isAborted = [this]{ std::lock_guard<std::mutex> g(m_abortFlagMutex); return m_abort_flag; }; // critical section: m_abortFlagMutex guards m_abort_flag for the duration of this lambda call
             for (i = 0; i < static_cast<int>(tasks.size()) && !isAborted(); i++)
             {
@@ -544,10 +545,15 @@ namespace WPEFramework
                     }
                     if (isTaskTimerStarted)
                     {
+                        /* Drop m_callMutex before m_statusMutex. startMaintenance() takes m_statusMutex then m_callMutex.
+                         * Coverity treats m_task_map as written under m_statusMutex on the IARM and stop paths. */
+                        lck.unlock(); // critical section end (temporary): m_callMutex
                         {
+                            std::lock_guard<std::mutex> stGuard(m_statusMutex); // critical section start: m_statusMutex before m_taskMapMutex
                             std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
                             m_task_map[tasks[i]] = true;
-                        } // critical section end: m_taskMapMutex
+                        } // critical section end: m_taskMapMutex, m_statusMutex
+                        lck.lock(); // critical section start (resumed): m_callMutex
                         MM_LOGINFO("Starting Task %s", task.c_str());
                         task_status = system(task.c_str());
                     }
@@ -555,15 +561,22 @@ namespace WPEFramework
                     // task_status = -1;
                     if (task_status != 0) /* system() call fails */
                     {
+                        /* Same lock order as the active-task write above: m_callMutex is not held across m_statusMutex. */
+                        lck.unlock(); // critical section end (temporary): m_callMutex
                         {
+                            std::lock_guard<std::mutex> stGuard(m_statusMutex); // critical section start: m_statusMutex before m_taskMapMutex
                             std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
                             m_task_map[tasks[i]] = false;
-                        } // critical section end: m_taskMapMutex
+                        } // critical section end: m_taskMapMutex, m_statusMutex
+                        lck.lock(); // critical section start (resumed): m_callMutex
                         MM_LOGINFO("%s invocation failed with return status %d", tasks[i].c_str(), WEXITSTATUS(task_status));
                         if (retry_count > 0 && isTaskTimerStarted)
                         {
                             MM_LOGINFO("Retry %s after %d seconds (%d retry left)\n", tasks[i].c_str(), TASK_RETRY_DELAY, retry_count);
+                            /* setMaintenanceMode() needs m_callMutex. Sleeping while holding it blocks that call for TASK_RETRY_DELAY. */
+                            lck.unlock(); // critical section end: m_callMutex
                             std::this_thread::sleep_for(std::chrono::seconds(TASK_RETRY_DELAY));
+                            lck.lock(); // critical section start: m_callMutex
                             i--; /* Decrement iterator to retry the same task again */
                             retry_count--;
                             continue;
@@ -2201,7 +2214,11 @@ namespace WPEFramework
             }
             {
                 std::unique_lock<std::mutex> iarmLock(m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
-                m_iarmCallbackCv.wait(iarmLock, [] { return MaintenanceManager::m_iarmCallbacksInFlight == 0; });
+                /* The counter is read here, under iarmLock. wait()'s predicate form puts that read in a lambda, which Coverity treats as an unlocked operator(). */
+                while (MaintenanceManager::m_iarmCallbacksInFlight != 0)
+                {
+                    m_iarmCallbackCv.wait(iarmLock);
+                }
             } // critical section end: m_iarmCallbackMutex
         }
 #endif /* defined(USE_IARMBUS) || defined(USE_IARM_BUS) */
