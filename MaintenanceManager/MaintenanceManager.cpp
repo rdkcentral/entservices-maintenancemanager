@@ -552,29 +552,27 @@ namespace WPEFramework
                          * Hold m_abortFlagMutex from the map update through system() so stop cannot observe an active task whose process does not exist yet. */
                         lck.unlock(); // critical section end (temporary): m_callMutex
                         bool launchTask = false;
+                        /* lock()/unlock() rather than unique_lock::lock(). Coverity does not treat unique_lock::lock() as holding m_abortFlagMutex. */
+                        m_statusMutex.lock(); // critical section start: m_statusMutex before m_abortFlagMutex and m_taskMapMutex
+                        m_abortFlagMutex.lock(); // critical section start: m_abortFlagMutex guards m_abort_flag
+                        if (m_abort_flag)
                         {
-                            std::unique_lock<std::mutex> abortLock(m_abortFlagMutex, std::defer_lock); // locked below, after m_statusMutex
-                            {
-                                std::lock_guard<std::mutex> stGuard(m_statusMutex); // critical section start: m_statusMutex before m_abortFlagMutex and m_taskMapMutex
-                                abortLock.lock(); // critical section start: m_abortFlagMutex guards m_abort_flag
-                                if (m_abort_flag)
-                                {
-                                    std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
-                                    m_task_map[tasks[i]] = false;
-                                }
-                                else
-                                {
-                                    std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
-                                    m_task_map[tasks[i]] = true;
-                                    launchTask = true;
-                                }
-                            } // critical section end: m_statusMutex. m_abortFlagMutex stays held through system()
-                            if (launchTask)
-                            {
-                                MM_LOGINFO("Starting Task %s", task.c_str());
-                                task_status = system(task.c_str());
-                            }
-                        } // critical section end: m_abortFlagMutex
+                            std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
+                            m_task_map[tasks[i]] = false;
+                        }
+                        else
+                        {
+                            std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
+                            m_task_map[tasks[i]] = true;
+                            launchTask = true;
+                        }
+                        m_statusMutex.unlock(); // critical section end: m_statusMutex. m_abortFlagMutex stays held through system()
+                        if (launchTask)
+                        {
+                            MM_LOGINFO("Starting Task %s", task.c_str());
+                            task_status = system(task.c_str());
+                        }
+                        m_abortFlagMutex.unlock(); // critical section end: m_abortFlagMutex
                         lck.lock(); // critical section start (resumed): m_callMutex
                         if (!launchTask)
                         {
