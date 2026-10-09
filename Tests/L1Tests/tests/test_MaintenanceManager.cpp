@@ -1821,6 +1821,82 @@ TEST_F(MaintenanceManagerTest, InitializeIARM_RegistersEventAndBootsUp) {
     plugin_->InitializeIARM();
 }
 
+namespace {
+void primeLogUploadTimeoutTaskBits(Plugin::MaintenanceManager *plugin)
+{
+    /* RFC and SWUPDATE succeeded. LOGUPLOAD reached its complete bit only,
+     * which is what timer_handler() records on timeout. */
+    plugin->g_task_status = 0;
+    SET_STATUS(plugin->g_task_status, RFC_SUCCESS);
+    SET_STATUS(plugin->g_task_status, RFC_COMPLETE);
+    SET_STATUS(plugin->g_task_status, SWUPDATE_SUCCESS);
+    SET_STATUS(plugin->g_task_status, SWUPDATE_COMPLETE);
+    SET_STATUS(plugin->g_task_status, LOGUPLOAD_COMPLETE);
+}
+
+void primeStartedUnsolicitedCycle(Plugin::MaintenanceManager *plugin)
+{
+    plugin->setMaintenanceType(UNSOLICITED_MAINTENANCE);
+    plugin->setNotifyStatus(MAINTENANCE_STARTED);
+    plugin->setUnsolicitedComplete(false);
+    plugin->m_workerJoinInProgress = false;
+    plugin->m_abort_flag = false;
+}
+}
+
+/* LOGUPLOAD timeout sets LOGUPLOAD_COMPLETE without LOGUPLOAD_SUCCESS and no
+ * later IARM event arrives. The worker must publish MAINTENANCE_ERROR and
+ * mark an unsolicited cycle complete so startMaintenance is not stuck. */
+TEST_F(MaintenanceManagerTest, WorkerTerminalStatus_LogUploadTimeout_PublishesError)
+{
+    primeStartedUnsolicitedCycle(&(*plugin_));
+    primeLogUploadTimeoutTaskBits(&(*plugin_));
+
+    plugin_->publishWorkerTerminalStatus();
+
+    EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_ERROR);
+    EXPECT_TRUE(plugin_->g_unsolicited_complete);
+}
+
+TEST_F(MaintenanceManagerTest, WorkerTerminalStatus_JoinInProgress_LeavesStarted)
+{
+    primeStartedUnsolicitedCycle(&(*plugin_));
+    primeLogUploadTimeoutTaskBits(&(*plugin_));
+    plugin_->m_workerJoinInProgress = true;
+
+    plugin_->publishWorkerTerminalStatus();
+
+    EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_STARTED);
+    EXPECT_FALSE(plugin_->g_unsolicited_complete);
+}
+
+TEST_F(MaintenanceManagerTest, WorkerTerminalStatus_AbortFlag_LeavesStarted)
+{
+    primeStartedUnsolicitedCycle(&(*plugin_));
+    primeLogUploadTimeoutTaskBits(&(*plugin_));
+    plugin_->m_abort_flag = true;
+
+    plugin_->publishWorkerTerminalStatus();
+
+    EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_STARTED);
+    EXPECT_FALSE(plugin_->g_unsolicited_complete);
+}
+
+TEST_F(MaintenanceManagerTest, WorkerTerminalStatus_IncompleteBits_LeavesStarted)
+{
+    primeStartedUnsolicitedCycle(&(*plugin_));
+    plugin_->g_task_status = 0;
+    SET_STATUS(plugin_->g_task_status, RFC_SUCCESS);
+    SET_STATUS(plugin_->g_task_status, RFC_COMPLETE);
+    SET_STATUS(plugin_->g_task_status, SWUPDATE_SUCCESS);
+    SET_STATUS(plugin_->g_task_status, SWUPDATE_COMPLETE);
+
+    plugin_->publishWorkerTerminalStatus();
+
+    EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_STARTED);
+    EXPECT_FALSE(plugin_->g_unsolicited_complete);
+}
+
 /* -----------------------------------------------------------------------
  * L1 tests for the startMaintenance() catch block
  *

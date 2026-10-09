@@ -628,7 +628,44 @@ namespace WPEFramework
                 }
             }
             MM_LOGINFO("Worker Thread Completed");
-        } /* end of task_execution_thread(); releases lck (m_callMutex) here at the latest */
+            /* startMaintenance() locks m_statusMutex then m_callMutex. Drop the call lock first. */
+            lck.unlock();
+            publishWorkerTerminalStatus();
+        } /* end of task_execution_thread() */
+
+        void MaintenanceManager::publishWorkerTerminalStatus()
+        {
+            std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards m_notify_status/g_task_status/g_unsolicited_complete
+            bool aborted = false;
+            {
+                std::lock_guard<std::mutex> abortGuard(m_abortFlagMutex); // critical section start: m_abortFlagMutex guards m_abort_flag
+                aborted = m_abort_flag;
+            } // critical section end: m_abortFlagMutex
+            /* IARM and stopMaintenanceTasks() set m_workerJoinInProgress before they wake this thread, then publish after join(). */
+            if (m_workerJoinInProgress || aborted || (MAINTENANCE_STARTED != m_notify_status) ||
+                ((g_task_status & TASKS_COMPLETED) != TASKS_COMPLETED) ||
+                ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS))
+            {
+                return;
+            }
+
+            MM_LOGINFO(" BITFIELD Status : %x", g_task_status);
+            Maint_notify_status_t terminalStatus = MAINTENANCE_ERROR;
+            if ((g_task_status & MAINTENANCE_TASK_SKIPPED) == MAINTENANCE_TASK_SKIPPED)
+            {
+                MM_LOGINFO("There are Skipped Task. Maintenance Incomplete");
+                terminalStatus = MAINTENANCE_INCOMPLETE;
+            }
+            else
+            {
+                MM_LOGINFO("Maintenance Ended with Errors");
+            }
+            if (getMaintenanceType() == UNSOLICITED_MAINTENANCE && !g_unsolicited_complete)
+            {
+                g_unsolicited_complete = true;
+            }
+            onMaintenanceStatusChange(terminalStatus);
+        } // critical section end: m_statusMutex
 
         bool MaintenanceManager::isWhoAmIEnabled()
         {
