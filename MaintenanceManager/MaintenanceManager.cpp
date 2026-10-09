@@ -663,16 +663,8 @@ namespace WPEFramework
             }
 
             MM_LOGINFO(" BITFIELD Status : %x", g_task_status);
+            MM_LOGINFO("Maintenance Ended with Errors");
             Maint_notify_status_t terminalStatus = MAINTENANCE_ERROR;
-            if ((g_task_status & MAINTENANCE_TASK_SKIPPED) == MAINTENANCE_TASK_SKIPPED)
-            {
-                MM_LOGINFO("There are Skipped Task. Maintenance Incomplete");
-                terminalStatus = MAINTENANCE_INCOMPLETE;
-            }
-            else
-            {
-                MM_LOGINFO("Maintenance Ended with Errors");
-            }
             if (getMaintenanceType() == UNSOLICITED_MAINTENANCE && !g_unsolicited_complete)
             {
                 g_unsolicited_complete = true;
@@ -2134,16 +2126,8 @@ namespace WPEFramework
                         /* Check other than all success case which means we have errors */
                         else if ((g_task_status & ALL_TASKS_SUCCESS) != ALL_TASKS_SUCCESS)
                         {
-                            if ((g_task_status & MAINTENANCE_TASK_SKIPPED) == MAINTENANCE_TASK_SKIPPED)
-                            {
-                                MM_LOGINFO("There are Skipped Task. Maintenance Incomplete");
-                                terminalStatus = MAINTENANCE_INCOMPLETE;
-                            }
-                            else
-                            {
-                                MM_LOGINFO("Maintenance Ended with Errors");
-                                terminalStatus = MAINTENANCE_ERROR;
-                            }
+                            MM_LOGINFO("Maintenance Ended with Errors");
+                            terminalStatus = MAINTENANCE_ERROR;
                         }
 
                         MM_LOGINFO("ENDING MAINTENANCE CYCLE");

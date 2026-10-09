@@ -1882,6 +1882,22 @@ TEST_F(MaintenanceManagerTest, WorkerTerminalStatus_AbortFlag_LeavesStarted)
     EXPECT_FALSE(plugin_->g_unsolicited_complete);
 }
 
+TEST_F(MaintenanceManagerTest, WorkerTerminalStatus_FirmwareSkipAndLogUploadTimeout_PublishesError)
+{
+    primeStartedUnsolicitedCycle(&(*plugin_));
+    plugin_->g_task_status = 0;
+    SET_STATUS(plugin_->g_task_status, RFC_SUCCESS);
+    SET_STATUS(plugin_->g_task_status, RFC_COMPLETE);
+    SET_STATUS(plugin_->g_task_status, SWUPDATE_COMPLETE);
+    SET_STATUS(plugin_->g_task_status, TASK_SKIPPED);
+    SET_STATUS(plugin_->g_task_status, LOGUPLOAD_COMPLETE);
+
+    plugin_->publishWorkerTerminalStatus();
+
+    EXPECT_EQ(plugin_->getNotifyStatus(), MAINTENANCE_ERROR);
+    EXPECT_TRUE(plugin_->g_unsolicited_complete);
+}
+
 TEST_F(MaintenanceManagerTest, WorkerTerminalStatus_IncompleteBits_LeavesStarted)
 {
     primeStartedUnsolicitedCycle(&(*plugin_));
