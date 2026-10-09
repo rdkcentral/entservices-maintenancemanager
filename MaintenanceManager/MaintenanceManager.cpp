@@ -524,7 +524,8 @@ namespace WPEFramework
                 tasks.push_back(task_names_foreground[TASK_LOGUPLOAD].c_str());
             }
 
-            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the task-execution loop; released across task_thread.wait(), the retry sleep, and each m_statusMutex acquisition; ends when task_execution_thread() returns
+            { // m_callMutex is released by lck's destructor at the end of this block, before publishWorkerTerminalStatus() takes m_statusMutex
+            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the task-execution loop; released across task_thread.wait(), the retry sleep, and each m_statusMutex acquisition
             auto isAborted = [this]{ std::lock_guard<std::mutex> g(m_abortFlagMutex); return m_abort_flag; }; // critical section: m_abortFlagMutex guards m_abort_flag for the duration of this lambda call
             for (i = 0; i < static_cast<int>(tasks.size()) && !isAborted(); i++)
             {
@@ -641,8 +642,8 @@ namespace WPEFramework
                 }
             }
             MM_LOGINFO("Worker Thread Completed");
-            /* startMaintenance() locks m_statusMutex then m_callMutex. Drop the call lock first. */
-            lck.unlock();
+            } // critical section end: m_callMutex. Destructor releases lck once; an explicit unlock() here is a second unlock to Coverity.
+            /* startMaintenance() locks m_statusMutex then m_callMutex. m_callMutex is already released. */
             publishWorkerTerminalStatus();
         } /* end of task_execution_thread() */
 
