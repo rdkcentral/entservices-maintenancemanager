@@ -1534,6 +1534,47 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_RFCComplete_TaskActive_Completes
 
 }
 
+TEST_F(MaintenanceManagerTest, IarmCompletionBeforeTaskWaitIsRetained) {
+    plugin_->m_abort_flag = false;
+    plugin_->m_notify_status = MAINTENANCE_STARTED;
+    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()] = true;
+    plugin_->prepareTaskWait();
+    EXPECT_FALSE(plugin_->m_taskWakeRequested);
+
+    IARM_Bus_MaintMGR_EventData_t eventData = {};
+    eventData.data.maintenance_module_status.status = MAINT_RFC_COMPLETE;
+    plugin_->iarmEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME,
+                              IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
+                              &eventData, sizeof(eventData));
+
+    EXPECT_TRUE(plugin_->m_taskWakeRequested);
+    /* Predicate is already true, so this must return without blocking. */
+    plugin_->waitForTaskCompletion();
+}
+
+TEST_F(MaintenanceManagerTest, IarmIgnoredCompletionDoesNotWakeWorker) {
+    plugin_->m_abort_flag = false;
+    plugin_->m_notify_status = MAINTENANCE_STARTED;
+    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()] = false;
+    plugin_->prepareTaskWait();
+
+    IARM_Bus_MaintMGR_EventData_t eventData = {};
+    eventData.data.maintenance_module_status.status = MAINT_RFC_COMPLETE;
+    plugin_->iarmEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME,
+                              IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
+                              &eventData, sizeof(eventData));
+
+    EXPECT_FALSE(plugin_->m_taskWakeRequested);
+}
+
+TEST_F(MaintenanceManagerTest, SignalTaskWorkerUnblocksArmedWait) {
+    plugin_->prepareTaskWait();
+    EXPECT_FALSE(plugin_->m_taskWakeRequested);
+    plugin_->signalTaskWorker();
+    EXPECT_TRUE(plugin_->m_taskWakeRequested);
+    plugin_->waitForTaskCompletion();
+}
+
 TEST_F(MaintenanceManagerTest, IarmEventHandler_RFCComplete_TaskInactive_Ignored) {
     plugin_->m_abort_flag = false;
     plugin_->m_notify_status = MAINTENANCE_STARTED;
