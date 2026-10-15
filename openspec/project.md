@@ -75,7 +75,7 @@ MaintenanceManager is a hosted component inside Thunder. It exposes northbound J
 - When unsolicited execution is skipped, plugin sets status to MAINTENANCE_COMPLETE and marks unsolicited-complete true for subsequent solicited requests.
 - API path startMaintenance() sets maintenance type to SOLICITED_MAINTENANCE (only when unsolicited cycle has completed and status is not STARTED).
 - Worker thread computes task list, performs network/activation/whoami gating, launches tasks sequentially, waits on condition variable for module completion events, applies timeout, supports one retry for failed task invocation.
-- Task timeout uses POSIX timer APIs with a SIGEV_THREAD callback (runs on a dedicated thread, not a signal handler) to mark task as error-complete and continue orchestration.
+- Task timeout uses POSIX timer APIs with a SIGEV_THREAD callback (runs on a dedicated thread, not a signal handler) to mark the task complete without its success bit and wake the worker. A later IARM event closes an RFC or SWUPDATE timeout. A LOGUPLOAD timeout has no later event, so the worker publishes MAINTENANCE_ERROR when it exits.
 
 - Execution is event-assisted sequential orchestration with a coarse-grained status bitmask used as the finalization gate.
 
@@ -130,13 +130,13 @@ MaintenanceManager is a hosted component inside Thunder. It exposes northbound J
 - Sequential script execution with condition-variable waits on IARMBus completion/error events and bitmask completion aggregation.
 
 6. IARMBus impact on control flow
-- Event handler sets per-task and aggregate status bits, triggers worker wakeups, derives final MAINTENANCE_COMPLETE/ERROR/INCOMPLETE outcome.
+- Event handler sets per-task and aggregate status bits, triggers worker wakeups, and derives MAINTENANCE_COMPLETE or MAINTENANCE_ERROR when every task has completed. The worker publishes MAINTENANCE_ERROR itself only when no IARM event closed the cycle, which is the LOGUPLOAD timeout case.
 
 7. Persistent state location and updates
 - cSettings over /opt/maintenance_mgr_record.conf for mode/optout and LastSuccessfulCompletionTime; RFC writes for initialization context values.
 
 8. Success/incomplete/error/reboot-required derivation
-- Derived from g_task_status bitmask and event-driven flags, with reboot-required and critical-maintenance tracked as separate state fields.
+- Derived from g_task_status. All success bits produce MAINTENANCE_COMPLETE on the IARM path and persist LastSuccessfulCompletionTime. A finished cycle missing a success bit, including a LOGUPLOAD timeout and a firmware-download abort, produces MAINTENANCE_ERROR. Reboot-required and critical-maintenance stay separate state fields. MAINTENANCE_INCOMPLETE remains in the status enum and is not the outcome of those paths.
 
 ## Risks and Validation Gaps
 

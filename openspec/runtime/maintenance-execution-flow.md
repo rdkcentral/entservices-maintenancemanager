@@ -62,16 +62,20 @@ Both converge in task_execution_thread() with divergent gating behavior.
 ## Phase 5: event-driven completion and finalization
 
 - IARM event handler updates task bits and wakes worker as tasks report complete/error/aborted.
-- When TASKS_COMPLETED mask is satisfied:
+- When TASKS_COMPLETED mask is satisfied inside the IARM handler:
   - ALL_TASKS_SUCCESS => MAINTENANCE_COMPLETE and LastSuccessfulCompletionTime persisted.
-  - MAINTENANCE_TASK_SKIPPED present => MAINTENANCE_INCOMPLETE.
   - otherwise => MAINTENANCE_ERROR.
-- Thread is joined at cycle end and unsolicited-complete marker is set for unsolicited path.
+- The IARM handler then joins the worker. The worker does not publish a second status for that cycle.
+- MAINTENANCE_INCOMPLETE remains in the status enum. The firmware-download abort path sets TASK_SKIPPED and SWUPDATE_COMPLETE without SWUPDATE_SUCCESS, so a finished cycle that includes that abort is MAINTENANCE_ERROR. MAINTENANCE_TASK_SKIPPED (0x200) is not set by that path.
 
 ## Abort and timeout behavior
 
 - stopMaintenance() routes to stopMaintenanceTasks().
-- If status is MAINTENANCE_STARTED, plugin sets abort flag, finds active task process by name in /proc, sends signals (SIGUSR1 for rfcMgr/rdkvfwupgrader, default SIGABRT otherwise), stops timer, notifies worker, joins thread, and sets status MAINTENANCE_ERROR.
-- Timer timeout handler marks current task as error-complete and wakes worker.
+- If status is MAINTENANCE_STARTED, plugin sets the join flag and the abort flag, finds the active task process by name in /proc, sends signals (SIGUSR1 for rfcMgr/rdkvfwupgrader, default SIGABRT otherwise), stops the timer, notifies the worker, joins the thread, and sets status MAINTENANCE_ERROR.
+- The worker checks the abort flag under m_abortFlagMutex before system(). If stop already won, the task map entry stays clear and system() is not called. If the worker wins, it holds m_abortFlagMutex until system() returns, so stop sees the process when it searches for the PID.
+- Timer timeout handler marks the current task complete without its success bit, clears that task in m_task_map, and wakes the worker. It does not change m_notify_status.
+- RFC or SWUPDATE timeout is closed by a later task's IARM event, which publishes the terminal status.
+- LOGUPLOAD is the last task. Its timeout, or a failed system() on the last task, leaves every complete bit set and at least one success bit clear, with no later IARM event. After the worker releases m_callMutex, publishWorkerTerminalStatus() publishes MAINTENANCE_ERROR and, for an unsolicited cycle, sets g_unsolicited_complete.
+- publishWorkerTerminalStatus() does nothing when status is not MAINTENANCE_STARTED, the abort flag is set, stop or IARM has set the join flag, a complete bit is still missing, or every success bit is set. MAINTENANCE_COMPLETE stays on the IARM path so LastSuccessfulCompletionTime is written once.
 
 - Precise semantics of SIGUSR1 handling inside task executables are external and require component-level validation.

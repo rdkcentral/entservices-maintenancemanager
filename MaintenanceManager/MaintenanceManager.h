@@ -245,7 +245,7 @@ namespace WPEFramework
 
             bool isDeviceOnline();
             void task_execution_thread();
-            /* Publishes ERROR or INCOMPLETE when the worker finishes a cycle that no IARM event closed. Caller must not hold m_callMutex. */
+            /* Publishes MAINTENANCE_ERROR when the worker finishes a STARTED cycle that no IARM event closed. Caller must not hold m_callMutex. */
             void publishWorkerTerminalStatus();
             void requestSystemReboot();
             void maintenanceManagerOnBootup();
