@@ -325,7 +325,8 @@ namespace WPEFramework
          * Register MaintenanceManager module as wpeframework plugin
          */
         MaintenanceManager::MaintenanceManager()
-            : PluginHost::JSONRPC(), 
+            : PluginHost::JSONRPC(),
+              g_maintenance_data(nullptr),
               m_notify_status(MAINTENANCE_IDLE),
               m_abort_flag(false),
               g_task_status(0),
@@ -523,7 +524,8 @@ namespace WPEFramework
                 tasks.push_back(task_names_foreground[TASK_LOGUPLOAD].c_str());
             }
 
-            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the whole task-execution loop below, released only during task_thread.wait()/the temporary unlock() further down; ends when task_execution_thread() returns
+            { // m_callMutex is released by lck's destructor at the end of this block, before publishWorkerTerminalStatus() takes m_statusMutex
+            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the task-execution loop; released across task_thread.wait(), the retry sleep, and each m_statusMutex acquisition
             auto isAborted = [this]{ std::lock_guard<std::mutex> g(m_abortFlagMutex); return m_abort_flag; }; // critical section: m_abortFlagMutex guards m_abort_flag for the duration of this lambda call
             for (i = 0; i < static_cast<int>(tasks.size()) && !isAborted(); i++)
             {
@@ -544,26 +546,59 @@ namespace WPEFramework
                     }
                     if (isTaskTimerStarted)
                     {
+                        /* Drop m_callMutex before m_statusMutex. startMaintenance() takes m_statusMutex then m_callMutex.
+                         * Coverity treats m_task_map as written under m_statusMutex on the IARM and stop paths.
+                         * stopMaintenanceTasks() takes m_statusMutex, then m_abortFlagMutex, then reads m_task_map and the PID.
+                         * Hold m_abortFlagMutex from the map update through system() so stop cannot observe an active task whose process does not exist yet. */
+                        lck.unlock(); // critical section end (temporary): m_callMutex
+                        bool launchTask = false;
+                        /* lock()/unlock() rather than unique_lock::lock(). Coverity does not treat unique_lock::lock() as holding m_abortFlagMutex. */
+                        m_statusMutex.lock(); // critical section start: m_statusMutex before m_abortFlagMutex and m_taskMapMutex
+                        m_abortFlagMutex.lock(); // critical section start: m_abortFlagMutex guards m_abort_flag
+                        if (m_abort_flag)
+                        {
+                            std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
+                            m_task_map[tasks[i]] = false;
+                        }
+                        else
                         {
                             std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
                             m_task_map[tasks[i]] = true;
-                        } // critical section end: m_taskMapMutex
-                        MM_LOGINFO("Starting Task %s", task.c_str());
-                        task_status = system(task.c_str());
+                            launchTask = true;
+                        }
+                        m_statusMutex.unlock(); // critical section end: m_statusMutex. m_abortFlagMutex stays held through system()
+                        if (launchTask)
+                        {
+                            MM_LOGINFO("Starting Task %s", task.c_str());
+                            task_status = system(task.c_str());
+                        }
+                        m_abortFlagMutex.unlock(); // critical section end: m_abortFlagMutex
+                        lck.lock(); // critical section start (resumed): m_callMutex
+                        if (!launchTask)
+                        {
+                            break;
+                        }
                     }
                     /* Set task_status purposefully to non-zero value to verify failure logic*/
                     // task_status = -1;
                     if (task_status != 0) /* system() call fails */
                     {
+                        /* Same lock order as the active-task write above: m_callMutex is not held across m_statusMutex. */
+                        lck.unlock(); // critical section end (temporary): m_callMutex
                         {
+                            std::lock_guard<std::mutex> stGuard(m_statusMutex); // critical section start: m_statusMutex before m_taskMapMutex
                             std::lock_guard<std::mutex> tmGuard(m_taskMapMutex); // critical section start: m_taskMapMutex guards m_task_map
                             m_task_map[tasks[i]] = false;
-                        } // critical section end: m_taskMapMutex
+                        } // critical section end: m_taskMapMutex, m_statusMutex
+                        lck.lock(); // critical section start (resumed): m_callMutex
                         MM_LOGINFO("%s invocation failed with return status %d", tasks[i].c_str(), WEXITSTATUS(task_status));
                         if (retry_count > 0 && isTaskTimerStarted)
                         {
                             MM_LOGINFO("Retry %s after %d seconds (%d retry left)\n", tasks[i].c_str(), TASK_RETRY_DELAY, retry_count);
+                            /* setMaintenanceMode() needs m_callMutex. Sleeping while holding it blocks that call for TASK_RETRY_DELAY. */
+                            lck.unlock(); // critical section end: m_callMutex
                             std::this_thread::sleep_for(std::chrono::seconds(TASK_RETRY_DELAY));
+                            lck.lock(); // critical section start: m_callMutex
                             i--; /* Decrement iterator to retry the same task again */
                             retry_count--;
                             continue;
@@ -628,7 +663,36 @@ namespace WPEFramework
                 }
             }
             MM_LOGINFO("Worker Thread Completed");
-        } /* end of task_execution_thread(); releases lck (m_callMutex) here at the latest */
+            } // critical section end: m_callMutex. Destructor releases lck once; an explicit unlock() here is a second unlock to Coverity.
+            /* startMaintenance() locks m_statusMutex then m_callMutex. m_callMutex is already released. */
+            publishWorkerTerminalStatus();
+        } /* end of task_execution_thread() */
+
+        void MaintenanceManager::publishWorkerTerminalStatus()
+        {
+            std::lock_guard<std::mutex> statusGuard(m_statusMutex); // critical section start: m_statusMutex guards m_notify_status/g_task_status/g_unsolicited_complete
+            bool aborted = false;
+            {
+                std::lock_guard<std::mutex> abortGuard(m_abortFlagMutex); // critical section start: m_abortFlagMutex guards m_abort_flag
+                aborted = m_abort_flag;
+            } // critical section end: m_abortFlagMutex
+            /* IARM and stopMaintenanceTasks() set m_workerJoinInProgress before they wake this thread, then publish after join(). */
+            if (m_workerJoinInProgress || aborted || (MAINTENANCE_STARTED != m_notify_status) ||
+                ((g_task_status & TASKS_COMPLETED) != TASKS_COMPLETED) ||
+                ((g_task_status & ALL_TASKS_SUCCESS) == ALL_TASKS_SUCCESS))
+            {
+                return;
+            }
+
+            MM_LOGINFO(" BITFIELD Status : %x", g_task_status);
+            MM_LOGINFO("Maintenance Ended with Errors");
+            Maint_notify_status_t terminalStatus = MAINTENANCE_ERROR;
+            if (getMaintenanceType() == UNSOLICITED_MAINTENANCE && !g_unsolicited_complete)
+            {
+                g_unsolicited_complete = true;
+            }
+            onMaintenanceStatusChange(terminalStatus);
+        } // critical section end: m_statusMutex
 
         bool MaintenanceManager::isWhoAmIEnabled()
         {
@@ -2084,16 +2148,8 @@ namespace WPEFramework
                         /* Check other than all success case which means we have errors */
                         else if ((g_task_status & ALL_TASKS_SUCCESS) != ALL_TASKS_SUCCESS)
                         {
-                            if ((g_task_status & MAINTENANCE_TASK_SKIPPED) == MAINTENANCE_TASK_SKIPPED)
-                            {
-                                MM_LOGINFO("There are Skipped Task. Maintenance Incomplete");
-                                terminalStatus = MAINTENANCE_INCOMPLETE;
-                            }
-                            else
-                            {
-                                MM_LOGINFO("Maintenance Ended with Errors");
-                                terminalStatus = MAINTENANCE_ERROR;
-                            }
+                            MM_LOGINFO("Maintenance Ended with Errors");
+                            terminalStatus = MAINTENANCE_ERROR;
                         }
 
                         MM_LOGINFO("ENDING MAINTENANCE CYCLE");
@@ -2164,7 +2220,11 @@ namespace WPEFramework
             }
             {
                 std::unique_lock<std::mutex> iarmLock(m_iarmCallbackMutex); // critical section start: m_iarmCallbackMutex guards IARM callback lifetime
-                m_iarmCallbackCv.wait(iarmLock, [] { return MaintenanceManager::m_iarmCallbacksInFlight == 0; });
+                /* The counter is read here, under iarmLock. wait()'s predicate form puts that read in a lambda, which Coverity treats as an unlocked operator(). */
+                while (MaintenanceManager::m_iarmCallbacksInFlight != 0)
+                {
+                    m_iarmCallbackCv.wait(iarmLock);
+                }
             } // critical section end: m_iarmCallbackMutex
         }
 #endif /* defined(USE_IARMBUS) || defined(USE_IARM_BUS) */

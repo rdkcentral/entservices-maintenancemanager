@@ -76,10 +76,13 @@ sequenceDiagram
     IARM-->>MM: Update task bits + notify worker
 
     MM->>SCR: Run LOGUPLOAD task
-    SCR-->>IARM: LOGUPLOAD event
-    IARM-->>MM: Update task bits + notify worker
-
-    MM->>MM: Derive final outcome from bitmask
+    alt LOGUPLOAD reports through IARM
+        SCR-->>IARM: LOGUPLOAD event
+        IARM-->>MM: Update task bits and publish COMPLETE or ERROR
+    else LOGUPLOAD times out
+        MM->>MM: Timer sets LOGUPLOAD_COMPLETE only
+        MM->>MM: Worker publishes MAINTENANCE_ERROR
+    end
     MM-->>Trigger: onMaintenanceStatusChange
 ```
 
@@ -125,10 +128,8 @@ stateDiagram-v2
     [*] --> IDLE
     IDLE --> STARTED: boot trigger or startMaintenance
     STARTED --> STARTED: task complete/error events update bitmask
-    STARTED --> ERROR: no network / abort / terminal errors
-    STARTED --> INCOMPLETE: skipped-task terminal state
-    STARTED --> COMPLETE: all success bits set
+    STARTED --> ERROR: no network, stop, LOGUPLOAD timeout, or completed cycle missing a success bit
+    STARTED --> COMPLETE: IARM reports every success bit
     COMPLETE --> [*]
     ERROR --> [*]
-    INCOMPLETE --> [*]
 ```
