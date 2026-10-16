@@ -122,7 +122,6 @@ target_include_directories(${MODULE_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:include>
         ${PROJECT_SOURCE_DIR}/../entservices-testframework/Tests/mocks
-        ${PROJECT_SOURCE_DIR}/../entservices-testframework/Tests/mocks/devicesettings
         ${PROJECT_SOURCE_DIR}/../entservices-testframework/Tests/mocks/thunder
         ${PROJECT_SOURCE_DIR}/../Thunder/Source/plugins
         )
