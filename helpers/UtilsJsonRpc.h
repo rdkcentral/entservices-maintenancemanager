@@ -69,20 +69,20 @@
  * You should be capable of just using "Notify".
  */
 
-#if ((THUNDER_VERSION >= 4) && (THUNDER_VERSION_MINOR == 4))
+// Thunder 5 dropped Notify() from Core::JSONRPC::Handler; use the JSONRPC base Notify() instead.
+#if defined(THUNDER_VERSION) && (THUNDER_VERSION <= 4)
 
 #define sendNotify(event,params) { \
     std::string json; \
     params.ToString(json); \
     LOGINFO("Notify %s %s", event, json.c_str()); \
-    Notify(event,params); \
+    for (uint8_t i = 1; GetHandler(i); i++) GetHandler(i)->Notify(event,params); \
 }
-
 #define sendNotifyMaskParameters(event,params) { \
     std::string json; \
     params.ToString(json); \
     LOGINFO("Notify %s <***>", event); \
-    Notify(event,params); \
+    for (uint8_t i = 1; GetHandler(i); i++) GetHandler(i)->Notify(event,params); \
 }
 
 #else
@@ -91,13 +91,14 @@
     std::string json; \
     params.ToString(json); \
     LOGINFO("Notify %s %s", event, json.c_str()); \
-    for (uint8_t i = 1; GetHandler(i); i++) GetHandler(i)->Notify(event,params); \
+    Notify(event,params); \
 }
+
 #define sendNotifyMaskParameters(event,params) { \
     std::string json; \
     params.ToString(json); \
     LOGINFO("Notify %s <***>", event); \
-    for (uint8_t i = 1; GetHandler(i); i++) GetHandler(i)->Notify(event,params); \
+    Notify(event,params); \
 }
 
 #endif
