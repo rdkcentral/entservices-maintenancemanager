@@ -34,7 +34,7 @@
 #include "mockauthservices.h"
 #endif
 
-using namespace WPEFramework;
+using namespace Thunder;
 using ::testing::NiceMock;
 using ::testing::_;
 using ::testing::Invoke;
@@ -355,7 +355,7 @@ TEST_F(MaintenanceManagerTest, AbortTask_RfcMgrTask) {
 
 /* --- internetStatusEventHandler ---- */
 TEST_F(MaintenanceManagerTest, internetStatusEventHandlerTest) {
-    WPEFramework::Core::JSON::Variant statusVariant, stateVariant;
+    Thunder::Core::JSON::Variant statusVariant, stateVariant;
     statusVariant = std::string("connected");
     stateVariant = static_cast<uint32_t>(INTERNET_CONNECTED_STATE);
     JsonObject parameters;
@@ -722,7 +722,7 @@ TEST(GetTimeZoneTest, DevicePropsFileNotCreated) {
     remove("/tmp/device.properties");
     remove("/tmp/timeZone_offset_map");
     remove("/tmp/timeZoneDST");
-    WPEFramework::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
+    Thunder::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
 
     // Check that all strings are empty
     EXPECT_STREQ(deviceName, "");
@@ -745,7 +745,7 @@ TEST(GetTimeZoneTest, DevicePropsFileCreatedButDSTFileNotCreated) {
     char zoneValue[128] = {0};
     char timeZone[128] = {0};
     char timeZoneOffset[128] = {0};
-    WPEFramework::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
+    Thunder::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
 
     EXPECT_STREQ(deviceName, "XYZ");
     EXPECT_STREQ(zoneValue, "");
@@ -775,7 +775,7 @@ TEST(GetTimeZoneTest, DevicePropsAndDSTFileCreated) {
     char zoneValue[128] = {0};
     char timeZone[128] = {0};
     char timeZoneOffset[128] = {0};
-    WPEFramework::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
+    Thunder::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
 
     EXPECT_STREQ(deviceName, "XYZ");
     EXPECT_STREQ(zoneValue, "");
@@ -803,7 +803,7 @@ TEST(GetTimeZoneTest, DevicePropsFileExistsAndNoTimeZoneOffsetMapFile) {
     char zoneValue[128] = {0};
     char timeZone[128] = {0};
     char timeZoneOffset[128] = {0};
-    WPEFramework::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
+    Thunder::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
 }
 
 TEST(GetTimeZoneTest, TimeZoneOffsetMapFileCreated) {
@@ -818,7 +818,7 @@ TEST(GetTimeZoneTest, TimeZoneOffsetMapFileCreated) {
     char zoneValue[128] = {0};
     char timeZone[128] = {0};
     char timeZoneOffset[128] = {0};
-    WPEFramework::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
+    Thunder::Plugin::getTimeZone(deviceName, zoneValue, timeZone, timeZoneOffset, sizeof(deviceName));
     EXPECT_STREQ(deviceName, "PLATCO");
     EXPECT_STREQ(zoneValue, "US/Eastern");
     EXPECT_STREQ(timeZone, "America/New_York");
@@ -888,7 +888,7 @@ TEST(GetFileContentTest, FileExistsAndHasContent) {
     testFile.close();
 	
     std::vector<std::string> vecOfStrs;
-    bool result = WPEFramework::Plugin::getFileContent(testFilePath, vecOfStrs);
+    bool result = Thunder::Plugin::getFileContent(testFilePath, vecOfStrs);
 
     EXPECT_TRUE(result);
     EXPECT_EQ(3, vecOfStrs.size());
@@ -901,7 +901,7 @@ TEST(GetFileContentTest, FileExistsAndHasContent) {
 
 TEST(GetFileContentTest, FileDoesNotExist) {
     std::vector<std::string> vecOfStrs;
-    bool result = WPEFramework::Plugin::getFileContent("/path/to/nonexistent/file", vecOfStrs);
+    bool result = Thunder::Plugin::getFileContent("/path/to/nonexistent/file", vecOfStrs);
 
     EXPECT_FALSE(result);
     EXPECT_TRUE(vecOfStrs.empty());
@@ -937,21 +937,21 @@ protected:
 
 TEST_F(ParseConfTest, FileDoesNotExist) {
     std::string value;
-    bool result = WPEFramework::Plugin::parseConfigFile("/path/to/nonexistent/file", "key1", value);
+    bool result = Thunder::Plugin::parseConfigFile("/path/to/nonexistent/file", "key1", value);
 
     EXPECT_FALSE(result);
 }
 
 TEST_F(ParseConfTest, KeyNotFound) {
     std::string value;
-    bool result = WPEFramework::Plugin::parseConfigFile(testFilePath.c_str(), "nonexistentKey", value);
+    bool result = Thunder::Plugin::parseConfigFile(testFilePath.c_str(), "nonexistentKey", value);
 
     EXPECT_FALSE(result);
 }
 
 TEST_F(ParseConfTest, KeyFound) {
     std::string value;
-    bool result = WPEFramework::Plugin::parseConfigFile(testFilePath.c_str(), "key1", value);
+    bool result = Thunder::Plugin::parseConfigFile(testFilePath.c_str(), "key1", value);
 
     EXPECT_TRUE(result);
     EXPECT_EQ("value1", value);
@@ -985,16 +985,16 @@ TEST(MaintenanceManagerModuleStatus, ModuleStatusToString) {
 TEST_F(MaintenanceManagerTest, MaintenanceInitTimer_Success)
 {
     bool result = plugin_->maintenance_initTimer();
-    EXPECT_TRUE(WPEFramework::Plugin::MaintenanceManager::g_task_timerCreated);
+    EXPECT_TRUE(Thunder::Plugin::MaintenanceManager::g_task_timerCreated);
     EXPECT_TRUE(result); 
 }
 
 TEST_F(MaintenanceManagerTest, MaintenanceInitTimer_AlreadyCreated_ReturnsTrue)
 {
-    WPEFramework::Plugin::MaintenanceManager::g_task_timerCreated = true;
+    Thunder::Plugin::MaintenanceManager::g_task_timerCreated = true;
 
     bool result = plugin_->maintenance_initTimer();
-    EXPECT_TRUE(WPEFramework::Plugin::MaintenanceManager::g_task_timerCreated);
+    EXPECT_TRUE(Thunder::Plugin::MaintenanceManager::g_task_timerCreated);
     EXPECT_TRUE(result);
 }
 
@@ -1016,7 +1016,7 @@ TEST_F(MaintenanceManagerTest, TaskStopTimer_Fail)
 {
     // Ensure the timer is created and started
     plugin_->task_startTimer();
-    WPEFramework::Plugin::MaintenanceManager::g_task_timerCreated = false;
+    Thunder::Plugin::MaintenanceManager::g_task_timerCreated = false;
     bool result = plugin_->task_stopTimer();
     EXPECT_FALSE(result);
 }
@@ -1033,14 +1033,14 @@ TEST_F(MaintenanceManagerTest, MaintenanceDeleteTimer_Fail)
 {
     // Ensure the timer is created first
     plugin_->task_startTimer();
-    WPEFramework::Plugin::MaintenanceManager::g_task_timerCreated = false;
+    Thunder::Plugin::MaintenanceManager::g_task_timerCreated = false;
     bool result = plugin_->maintenance_deleteTimer();
 
     EXPECT_FALSE(result);
 }
 
 TEST_F(MaintenanceManagerTest, TimerHandler_Handles_failedtask) {
-    using namespace WPEFramework::Plugin;
+    using namespace Thunder::Plugin;
 
     std::string matchedTask = task_names_foreground[TASK_RFC]; // use a known task name
     MaintenanceManager::currentTask = matchedTask;
@@ -1054,7 +1054,7 @@ TEST_F(MaintenanceManagerTest, TimerHandler_Handles_failedtask) {
 
 TEST_F(MaintenanceManagerTest, TimerHandler_StaleGeneration_DoesNotFailCurrentTask)
 {
-    using namespace WPEFramework::Plugin;
+    using namespace Thunder::Plugin;
 
     std::string taskA = task_names_foreground[TASK_RFC];
     std::string taskB = task_names_foreground[TASK_SWUPDATE];
@@ -1072,7 +1072,7 @@ TEST_F(MaintenanceManagerTest, TimerHandler_StaleGeneration_DoesNotFailCurrentTa
 
 TEST_F(MaintenanceManagerTest, TimerHandler_NonSIGALRM_Ignored)
 {
-    using namespace WPEFramework::Plugin;
+    using namespace Thunder::Plugin;
 
     std::string task = task_names_foreground[TASK_LOGUPLOAD];
     MaintenanceManager::currentTask = task;
@@ -1087,7 +1087,7 @@ TEST_F(MaintenanceManagerTest, TimerHandler_NonSIGALRM_Ignored)
 
 TEST_F(MaintenanceManagerTest, TimerHandler_SIGALRM_NoTaskMatch)
 {
-    using namespace WPEFramework::Plugin;
+    using namespace Thunder::Plugin;
 
     MaintenanceManager::currentTask = "unknown_task";
     plugin_->m_task_map.clear();
@@ -1101,7 +1101,7 @@ TEST_F(MaintenanceManagerTest, TimerHandler_SIGALRM_NoTaskMatch)
 
 TEST_F(MaintenanceManagerTest, TimerHandler_SIGALRM_TaskSetToError)
 {
-    WPEFramework::Plugin::MaintenanceManager::currentTask = "DownloadFirmware";
+    Thunder::Plugin::MaintenanceManager::currentTask = "DownloadFirmware";
 
     plugin_->m_task_map["DownloadFirmware"] = true; // Still active
 
@@ -1432,7 +1432,7 @@ TEST_F(MaintenanceManagerTest, GetServiceState_Available) {
         .WillOnce(::testing::Return(&service_));
     EXPECT_CALL(service_, State())
         .WillOnce(::testing::Return(PluginHost::IShell::state::ACTIVATED));
-    uint32_t result = WPEFramework::Plugin::getServiceState(&service_, "test", state);
+    uint32_t result = Thunder::Plugin::getServiceState(&service_, "test", state);
 
     EXPECT_EQ(result, Core::ERROR_NONE);
     EXPECT_EQ(state, PluginHost::IShell::state::ACTIVATED);
@@ -1505,7 +1505,7 @@ TEST_F(MaintenanceManagerTest, EventHandler_InstanceSet_DelegatesCall) {
 }
 
 TEST_F(MaintenanceManagerTest, StaticEventHandler_InstanceNull_LogsWarning) {
-    WPEFramework::Plugin::MaintenanceManager::_instance = nullptr;
+    Thunder::Plugin::MaintenanceManager::_instance = nullptr;
 
     IARM_Bus_MaintMGR_EventData_t eventData = {};
 
@@ -1525,7 +1525,7 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_AbortFlagTrue_IgnoresEvent) {
 TEST_F(MaintenanceManagerTest, IarmEventHandler_RFCComplete_TaskActive_CompletesTask) {
     plugin_->m_abort_flag = false;
     plugin_->m_notify_status = MAINTENANCE_STARTED;
-    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()] = true;
+    plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_RFC].c_str()] = true;
 
     IARM_Bus_MaintMGR_EventData_t eventData = {};
     eventData.data.maintenance_module_status.status = MAINT_RFC_COMPLETE;
@@ -1537,7 +1537,7 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_RFCComplete_TaskActive_Completes
 TEST_F(MaintenanceManagerTest, IarmEventHandler_RFCComplete_TaskInactive_Ignored) {
     plugin_->m_abort_flag = false;
     plugin_->m_notify_status = MAINTENANCE_STARTED;
-    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()] = false;
+    plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_RFC].c_str()] = false;
 
     IARM_Bus_MaintMGR_EventData_t eventData = {};
     eventData.data.maintenance_module_status.status = MAINT_RFC_COMPLETE;
@@ -1545,13 +1545,13 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_RFCComplete_TaskInactive_Ignored
     plugin_->iarmEventHandler(IARM_BUS_MAINTENANCE_MGR_NAME,
                               IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
                               &eventData, sizeof(eventData));
-    EXPECT_FALSE(plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()]);
+    EXPECT_FALSE(plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_RFC].c_str()]);
 }
 
 TEST_F(MaintenanceManagerTest, IarmEventHandler_LogUploadError_TaskActive_Handled) {
     plugin_->m_abort_flag = false;
     plugin_->m_notify_status = MAINTENANCE_STARTED;
-    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_LOGUPLOAD].c_str()] = true;
+    plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_LOGUPLOAD].c_str()] = true;
 
     IARM_Bus_MaintMGR_EventData_t eventData = {};
     eventData.data.maintenance_module_status.status = MAINT_LOGUPLOAD_ERROR;
@@ -1560,13 +1560,13 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_LogUploadError_TaskActive_Handle
                               IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
                               &eventData, sizeof(eventData));
 
-    EXPECT_TRUE(plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_LOGUPLOAD].c_str()]);
+    EXPECT_TRUE(plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_LOGUPLOAD].c_str()]);
 }
 
 TEST_F(MaintenanceManagerTest, IarmEventHandler_FWDownloadAborted_TaskMarkedSkipped) {
     plugin_->m_abort_flag = false;
     plugin_->m_notify_status = MAINTENANCE_STARTED;
-    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_SWUPDATE].c_str()] = true;
+    plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_SWUPDATE].c_str()] = true;
 
     IARM_Bus_MaintMGR_EventData_t eventData = {};
     eventData.data.maintenance_module_status.status = MAINT_FWDOWNLOAD_ABORTED;
@@ -1575,7 +1575,7 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_FWDownloadAborted_TaskMarkedSkip
                               IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
                               &eventData, sizeof(eventData));
 
-   EXPECT_FALSE(plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_SWUPDATE].c_str()]);
+   EXPECT_FALSE(plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_SWUPDATE].c_str()]);
 }
 
 TEST_F(MaintenanceManagerTest, IarmEventHandler_RebootRequired_GlobalFlagSet) {
@@ -1635,7 +1635,7 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_CriticalUpdate_GlobalFlagSet) {
 TEST_F(MaintenanceManagerTest, IarmEventHandler_RfcInProgress_SetsTrue) {
     plugin_->m_abort_flag = false;
     plugin_->m_notify_status = MAINTENANCE_STARTED;
-    plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()] = false;
+    plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_RFC].c_str()] = false;
 
     IARM_Bus_MaintMGR_EventData_t eventData = {};
     eventData.data.maintenance_module_status.status = MAINT_RFC_INPROGRESS;
@@ -1644,7 +1644,7 @@ TEST_F(MaintenanceManagerTest, IarmEventHandler_RfcInProgress_SetsTrue) {
                               IARM_BUS_MAINTENANCEMGR_EVENT_UPDATE,
                               &eventData, sizeof(eventData));
 
-    EXPECT_TRUE(plugin_->m_task_map[WPEFramework::Plugin::task_names_foreground[TASK_RFC].c_str()]);
+    EXPECT_TRUE(plugin_->m_task_map[Thunder::Plugin::task_names_foreground[TASK_RFC].c_str()]);
 }
 
 TEST_F(MaintenanceManagerTest, SecManagerActive_AllGood_ReturnsTrue)

@@ -30,7 +30,7 @@
 #include "pkg.h"
 #include "ThunderPortability.h"
 
-using namespace WPEFramework;
+using namespace Thunder;
 using ::testing::NiceMock;
 using ::testing::Return;
 
@@ -286,7 +286,7 @@ TEST_F(PackagerInitializedTest, TestNotifyRepoSynced) {
 
 /* BlockingSetuplocalRepoNoLock() Test */
 TEST_F(PackagerInitializedTest, TestBlockingSetupLocalRepoNoLock) {
-    WPEFramework::Plugin::PackagerImplementation::RepoSyncModeType mode = WPEFramework::Plugin::PackagerImplementation::RepoSyncModeType::SETUP;
+    Thunder::Plugin::PackagerImplementation::RepoSyncModeType mode = Thunder::Plugin::PackagerImplementation::RepoSyncModeType::SETUP;
     PackagerImplementation->SetRepoSyncMode(mode);
     PackagerImplementation->TestBlockingSetupLocalRepoNoLock(PackagerImplementation->GetRepoSyncMode());
     EXPECT_FALSE(PackagerImplementation->GetIsSyncing());

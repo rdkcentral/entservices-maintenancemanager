@@ -16,7 +16,7 @@
 # limitations under the License.
 
 set(PLUGIN_NAME Packager)
-set(MODULE_NAME WPEFramework${PLUGIN_NAME})
+set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 

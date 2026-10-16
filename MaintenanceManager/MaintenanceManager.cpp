@@ -210,9 +210,9 @@ string moduleStatusToString(IARM_Maint_module_status_t &status)
 }
 
 /**
- * @brief WPEFramework class for Maintenance Manager
+ * @brief Thunder class for Maintenance Manager
  */
-namespace WPEFramework
+namespace Thunder
 {
     namespace
     {
@@ -322,7 +322,7 @@ namespace WPEFramework
         };
 
         /**
-         * Register MaintenanceManager module as wpeframework plugin
+         * Register MaintenanceManager module as thunder plugin
          */
         MaintenanceManager::MaintenanceManager()
             : PluginHost::JSONRPC(), 
@@ -341,7 +341,7 @@ namespace WPEFramework
 #endif
 
             /**
-             * @brief Invoking Plugin API register to WPEFRAMEWORK.
+             * @brief Invoking Plugin API register to THUNDER.
              */
 #ifdef DEBUG
             Register("sampleMaintenanceManagerAPI", &MaintenanceManager::sampleAPI, this);
@@ -661,7 +661,7 @@ namespace WPEFramework
             const char *secMgr_callsign = "org.rdk.SecManager";
             const char *secMgr_callsign_ver = "org.rdk.SecManager.1";
             PluginHost::IShell::state state;
-            WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *thunder_client = nullptr;
+            Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement> *thunder_client = nullptr;
 
             do
             {
@@ -737,10 +737,10 @@ namespace WPEFramework
          * @param callsign The callsign of the Thunder plugin to retrieve.
          * @return A pointer to a JSONRPC link for the specified plugin.
          */
-        WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *MaintenanceManager::getThunderPluginHandle(const char *callsign)
+        Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement> *MaintenanceManager::getThunderPluginHandle(const char *callsign)
         {
             string token;
-            WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *thunder_client = nullptr;
+            Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement> *thunder_client = nullptr;
 
             auto security = m_service->QueryInterfaceByCallsign<PluginHost::IAuthenticate>("SecurityAgent");
             if (security != nullptr)
@@ -766,7 +766,7 @@ namespace WPEFramework
 
             string query = "token=" + token;
             Core::SystemInfo::SetEnvironment(_T("THUNDER_ACCESS"), _T(SERVER_DETAILS));
-            thunder_client = new WPEFramework::JSONRPC::LinkType<Core::JSON::IElement>(callsign, "", false, query);
+            thunder_client = new Thunder::JSONRPC::LinkType<Core::JSON::IElement>(callsign, "", false, query);
             return thunder_client;
         }
 
@@ -1066,7 +1066,7 @@ namespace WPEFramework
 
             MM_LOGINFO("Invoke setPartnerId");
 
-            WPEFramework::Exchange::IAuthService::SetPartnerIdResult spRes;
+            Thunder::Exchange::IAuthService::SetPartnerIdResult spRes;
             uint32_t rc = m_authservicePlugin->SetPartnerId(partnerid, spRes);
             if (rc == Core::ERROR_NONE)
             {
@@ -1092,7 +1092,7 @@ namespace WPEFramework
             bool result = false;
             MM_LOGINFO("Attempting to subscribe for %s events", event.c_str());
             const char *network_callsign = "org.rdk.Network.1";
-            WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *thunder_client = nullptr;
+            Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement> *thunder_client = nullptr;
 
             thunder_client = getThunderPluginHandle(network_callsign);
             if (thunder_client == nullptr)
@@ -1341,7 +1341,7 @@ namespace WPEFramework
                 return ret_status;
             }
 
-            WPEFramework::Exchange::IAuthService::ActivationStatusResult asRes;
+            Thunder::Exchange::IAuthService::ActivationStatusResult asRes;
             uint32_t rc = m_authservicePlugin->GetActivationStatus(asRes);
             if (rc == Core::ERROR_NONE)
             {
@@ -1488,7 +1488,7 @@ namespace WPEFramework
 
             string query = "token=" + token;
             Core::SystemInfo::SetEnvironment(_T("THUNDER_ACCESS"), _T(SERVER_DETAILS));
-            auto thunder_client = make_shared<WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement>>(callsign.c_str(), "", false, query);
+            auto thunder_client = make_shared<Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement>>(callsign.c_str(), "", false, query);
             if (thunder_client != nullptr)
             {
                 uint32_t status = thunder_client->Invoke<JsonObject, JsonObject>(5000, "isConnectedToInternet", joGetParams, joGetResult);
@@ -1612,7 +1612,7 @@ namespace WPEFramework
             bool result = false;
             string event = "onDeviceInitializationContextUpdate";
             const char *secMgr_callsign_ver = "org.rdk.SecManager.1";
-            WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *thunder_client = nullptr;
+            Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement> *thunder_client = nullptr;
 
             // subscribe to onDeviceInitializationContextUpdate event
             MM_LOGINFO("Attempting to subscribe for %s events", event.c_str());
@@ -3283,4 +3283,4 @@ namespace WPEFramework
         }
 
     } /* namespace Plugin */
-} /* namespace WPEFramework */
+} /* namespace Thunder */

@@ -165,7 +165,7 @@ typedef enum
 #define CLEAR_STATUS(VALUE, N) ((VALUE) &= ~(1 << (N)))
 #define CHECK_STATUS(VALUE, N) ((VALUE) & (1 << (N)))
 
-namespace WPEFramework
+namespace Thunder
 {
     namespace Plugin
     {
@@ -251,7 +251,7 @@ namespace WPEFramework
             bool readRFC(const char *);
             bool setRFC(const char *, const char *, DATA_TYPE);
             void setPartnerId(string);
-            WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *getThunderPluginHandle(const char *);
+            Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement> *getThunderPluginHandle(const char *);
             bool stopMaintenanceTasks();
             bool subscribeForInternetStatusEvent(string);
             void internetStatusChangeEventHandler(const JsonObject &parameters);
@@ -328,7 +328,7 @@ namespace WPEFramework
             void callInternetStatusChangeEventHandler(const JsonObject &parameters) { internetStatusChangeEventHandler(parameters); }
             int callAbortTask(const char *taskname, int sig_to_send) { return abortTask(taskname, sig_to_send); }
             void setUnsolicitedComplete(bool value) { std::lock_guard<std::mutex> statusGuard(m_statusMutex); g_unsolicited_complete = value; }
-            WPEFramework::JSONRPC::LinkType<WPEFramework::Core::JSON::IElement> *PublicGetThunderPluginHandle(const char *callsign)
+            Thunder::JSONRPC::LinkType<Thunder::Core::JSON::IElement> *PublicGetThunderPluginHandle(const char *callsign)
             {
                 std::cout << "Inside PublicGetThunderPluginHandle" << std::endl;
                 auto result = getThunderPluginHandle(callsign);
@@ -361,6 +361,6 @@ namespace WPEFramework
             uint32_t getMaintenanceMode(const JsonObject &parameters, JsonObject &response);
         }; /* end of MaintenanceManager service class */
     } /* end of plugin */
-} /* end of wpeframework */
+} /* end of thunder */
 
 #endif // MAINTENANCEMANAGER_H

@@ -27,7 +27,7 @@
 #include <opkg_download.h>
 #include <pkg.h>
 
-namespace WPEFramework {
+namespace Thunder {
 namespace Plugin {
 
     SERVICE_REGISTRATION(PackagerImplementation, 1, 0);
@@ -482,4 +482,4 @@ namespace Plugin {
     }
 
 }  // namespace Plugin
-}  // namespace WPEFramework
+}  // namespace Thunder
