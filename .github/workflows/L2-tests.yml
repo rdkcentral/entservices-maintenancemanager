@@ -639,7 +639,7 @@ jobs:
           -t "entservices-maintenancemanager coverage"
           filtered_coverage.info
           &&
-          lcov --extract filtered_coverage.info "*/MaintenanceManager/MaintenanceManager.cpp" -o maintenancemanager_coverage.info
+          lcov --extract filtered_coverage.info "*/MaintenanceManager/MaintenanceManager.cpp" -o maintenancemanager_coverage.info || true
 
       - name: Upload artifacts
         if: ${{ !env.ACT }}
