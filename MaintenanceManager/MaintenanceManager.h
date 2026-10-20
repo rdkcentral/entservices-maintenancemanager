@@ -220,8 +220,12 @@ namespace WPEFramework
             std::mutex m_callMutex;
             std::mutex m_waiMutex;
             std::mutex m_statusMutex;
+            /* Leaf lock: never take another mutex while holding m_taskConditionMutex (Coverity ORDER_REVERSAL). */
+            std::mutex m_taskConditionMutex; /* Guards m_taskWakeRequested so a wake cannot be lost before the worker waits */
             std::condition_variable task_thread;
+            std::condition_variable m_taskCondition;
             std::thread m_thread;
+            bool m_taskWakeRequested = false; /* Guarded by m_taskConditionMutex */
 
             std::map<string, bool> m_task_map;
             std::map<string, string> m_param_map;
@@ -232,6 +236,9 @@ namespace WPEFramework
 
             bool isDeviceOnline();
             void task_execution_thread();
+            void prepareTaskWait();
+            void signalTaskWorker();
+            void waitForTaskCompletion();
             void requestSystemReboot();
             void maintenanceManagerOnBootup();
             bool checkAutoRebootFlag();
