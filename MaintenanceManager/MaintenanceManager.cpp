@@ -766,7 +766,8 @@ namespace WPEFramework
 
             string query = "token=" + token;
             Core::SystemInfo::SetEnvironment(_T("THUNDER_ACCESS"), _T(SERVER_DETAILS));
-            thunder_client = new WPEFramework::JSONRPC::LinkType<Core::JSON::IElement>(callsign, "", false, query);
+            static const char kThunderClientId[] = "MaintenanceManager";
+            thunder_client = new WPEFramework::JSONRPC::LinkType<Core::JSON::IElement>(callsign, kThunderClientId, false, query);
             return thunder_client;
         }
 
@@ -1107,6 +1108,10 @@ namespace WPEFramework
                 if (status == Core::ERROR_NONE)
                 {
                     result = true;
+                }
+                else
+                {
+                    MM_LOGINFO("Subscribe for %s returned %d", event.c_str(), static_cast<int>(status));
                 }
             }
             return result;
@@ -1630,6 +1635,10 @@ namespace WPEFramework
                 if (status == Core::ERROR_NONE)
                 {
                     result = true;
+                }
+                else
+                {
+                    MM_LOGINFO("Subscribe for %s returned %d", event.c_str(), static_cast<int>(status));
                 }
             }
             g_subscribed_for_deviceContextUpdate = result;
