@@ -331,6 +331,7 @@ namespace WPEFramework
               m_abort_flag(false),
               g_task_status(0),
               g_unsolicited_complete(false),
+              m_taskWakeRequested(false),
               m_authservicePlugin(nullptr)
         {
             MaintenanceManager::_instance = this;
@@ -525,7 +526,7 @@ namespace WPEFramework
             }
 
             { // m_callMutex is released by lck's destructor at the end of this block, before publishWorkerTerminalStatus() takes m_statusMutex
-            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the task-execution loop; released across task_thread.wait(), the retry sleep, and each m_statusMutex acquisition
+            std::unique_lock<std::mutex> lck(m_callMutex); // critical section start: m_callMutex guards the task-execution loop; released across waitForTaskCompletion(), the retry sleep, and each m_statusMutex acquisition
             auto isAborted = [this]{ std::lock_guard<std::mutex> g(m_abortFlagMutex); return m_abort_flag; }; // critical section: m_abortFlagMutex guards m_abort_flag for the duration of this lambda call
             for (i = 0; i < static_cast<int>(tasks.size()) && !isAborted(); i++)
             {
@@ -535,6 +536,10 @@ namespace WPEFramework
                     std::lock_guard<std::mutex> ctGuard(m_currentTaskMutex); // critical section start: m_currentTaskMutex guards currentTask
                     currentTask = task;
                 } // critical section end: m_currentTaskMutex
+                /* Arm the persistent wake predicate before the task can emit an
+                 * IARM completion event. A notification received before wait()
+                 * is therefore retained in m_taskWakeRequested. */
+                prepareTaskWait();
                 task += " &";
                 task += "\0";
                 if (!isAborted())
@@ -633,7 +638,9 @@ namespace WPEFramework
                     {
                         MM_LOGINFO("Waiting to unlock.. [%d/%d]", i + 1, (int)tasks.size());
 #if !defined(GTEST_ENABLE)
-                        task_thread.wait(lck);
+                        lck.unlock(); // critical section end (temporary): m_callMutex
+                        waitForTaskCompletion();
+                        lck.lock(); // critical section start (resumed): m_callMutex
 #endif
                         if (task_stopTimer())
                         {
@@ -693,6 +700,31 @@ namespace WPEFramework
             }
             onMaintenanceStatusChange(terminalStatus);
         } // critical section end: m_statusMutex
+
+        void MaintenanceManager::prepareTaskWait()
+        {
+            std::lock_guard<std::mutex> taskGuard(m_taskConditionMutex); // critical section start: m_taskConditionMutex guards m_taskWakeRequested
+            m_taskWakeRequested = false;
+        } // critical section end: m_taskConditionMutex
+
+        void MaintenanceManager::signalTaskWorker()
+        {
+            {
+                std::lock_guard<std::mutex> taskGuard(m_taskConditionMutex); // critical section start: m_taskConditionMutex guards m_taskWakeRequested
+                m_taskWakeRequested = true;
+            } // critical section end: m_taskConditionMutex
+            m_taskCondition.notify_one();
+        }
+
+        void MaintenanceManager::waitForTaskCompletion()
+        {
+            std::unique_lock<std::mutex> taskLock(m_taskConditionMutex); // critical section start: m_taskConditionMutex guards m_taskWakeRequested
+            /* wait()'s predicate form puts this read in a lambda, which Coverity treats as an unlocked operator(). */
+            while (!m_taskWakeRequested)
+            {
+                m_taskCondition.wait(taskLock);
+            }
+        } // critical section end: m_taskConditionMutex
 
         bool MaintenanceManager::isWhoAmIEnabled()
         {
@@ -830,7 +862,8 @@ namespace WPEFramework
 
             string query = "token=" + token;
             Core::SystemInfo::SetEnvironment(_T("THUNDER_ACCESS"), _T(SERVER_DETAILS));
-            thunder_client = new WPEFramework::JSONRPC::LinkType<Core::JSON::IElement>(callsign, "", false, query);
+            static const char kThunderClientId[] = "MaintenanceManager";
+            thunder_client = new WPEFramework::JSONRPC::LinkType<Core::JSON::IElement>(callsign, kThunderClientId, false, query);
             return thunder_client;
         }
 
@@ -1063,7 +1096,7 @@ namespace WPEFramework
                 }
                 else if (failedTask)
                 {
-                    MaintenanceManager::_instance->task_thread.notify_one();
+                    MaintenanceManager::_instance->signalTaskWorker();
                     MM_LOGINFO("Set %s Task to ERROR", failedTask);
                 }
             }
@@ -1171,6 +1204,10 @@ namespace WPEFramework
                 if (status == Core::ERROR_NONE)
                 {
                     result = true;
+                }
+                else
+                {
+                    MM_LOGINFO("Subscribe for %s returned %d", event.c_str(), static_cast<int>(status));
                 }
             }
             return result;
@@ -1695,6 +1732,10 @@ namespace WPEFramework
                 {
                     result = true;
                 }
+                else
+                {
+                    MM_LOGINFO("Subscribe for %s returned %d", event.c_str(), static_cast<int>(status));
+                }
             }
             g_subscribed_for_deviceContextUpdate = result;
             if (g_subscribed_for_deviceContextUpdate)
@@ -2004,8 +2045,8 @@ namespace WPEFramework
                                 {
                                     SET_STATUS(g_task_status, RFC_SUCCESS);
                                     SET_STATUS(g_task_status, RFC_COMPLETE);
-                                    task_thread.notify_one();
                                     m_task_map[task_names_foreground[TASK_RFC].c_str()] = false;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_FWDOWNLOAD_COMPLETE:
@@ -2018,8 +2059,8 @@ namespace WPEFramework
                                 {
                                     SET_STATUS(g_task_status, SWUPDATE_SUCCESS);
                                     SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
-                                    task_thread.notify_one();
                                     m_task_map[task_names_foreground[TASK_SWUPDATE].c_str()] = false;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_LOGUPLOAD_COMPLETE:
@@ -2032,8 +2073,8 @@ namespace WPEFramework
                                 {
                                     SET_STATUS(g_task_status, LOGUPLOAD_SUCCESS);
                                     SET_STATUS(g_task_status, LOGUPLOAD_COMPLETE);
-                                    task_thread.notify_one();
                                     m_task_map[task_names_foreground[TASK_LOGUPLOAD].c_str()] = false;
+                                    signalTaskWorker();
                                 }
 
                                 break;
@@ -2048,8 +2089,8 @@ namespace WPEFramework
                                 SET_STATUS(g_task_status, TASK_SKIPPED);
                                 /* we say FW update task complete */
                                 SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
-                                task_thread.notify_one();
                                 m_task_map[task_names_foreground[TASK_SWUPDATE].c_str()] = false;
+                                signalTaskWorker();
                                 MM_LOGINFO("FW Download task aborted");
                                 break;
                             case MAINT_RFC_ERROR:
@@ -2061,9 +2102,9 @@ namespace WPEFramework
                                 else
                                 {
                                     SET_STATUS(g_task_status, RFC_COMPLETE);
-                                    task_thread.notify_one();
                                     MM_LOGINFO("Error encountered in RFC Task");
                                     m_task_map[task_names_foreground[TASK_RFC].c_str()] = true;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_LOGUPLOAD_ERROR:
@@ -2075,9 +2116,9 @@ namespace WPEFramework
                                 else
                                 {
                                     SET_STATUS(g_task_status, LOGUPLOAD_COMPLETE);
-                                    task_thread.notify_one();
                                     MM_LOGINFO("Error encountered in LOGUPLOAD Task");
                                     m_task_map[task_names_foreground[TASK_LOGUPLOAD].c_str()] = true;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_FWDOWNLOAD_ERROR:
@@ -2089,9 +2130,9 @@ namespace WPEFramework
                                 else
                                 {
                                     SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
-                                    task_thread.notify_one();
                                     MM_LOGINFO("Error encountered in SWUPDATE Task");
                                     m_task_map[task_names_foreground[TASK_SWUPDATE].c_str()] = true;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_RFC_INPROGRESS:
@@ -3162,7 +3203,7 @@ namespace WPEFramework
                 else{
                     MM_LOGERR("task_stopTimer() did not stop the Timer");
                 }
-                task_thread.notify_one();
+                signalTaskWorker();
                 if (UNSOLICITED_MAINTENANCE == getMaintenanceType() && !g_unsolicited_complete)
                 {
                     g_unsolicited_complete = true;
