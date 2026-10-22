@@ -62,7 +62,9 @@ Behavioral highlights:
 - Timeout protection using a POSIX timer (SIGEV_THREAD callback on a dedicated thread, not a SIGALRM signal handler); a SIG_IGN safety net ignores any stray external SIGALRM
 - Retry support for failed task invocation attempts
 - Abort path that signals active task processes and transitions to error status
-- Final status derivation from task completion/success/skipped bitmasks
+- Final status derivation from task completion and success bits
+
+A task timeout sets that task's complete bit and does not set its success bit. RFC and SWUPDATE timeouts are still closed by a later IARM event. LOGUPLOAD is last, so a LOGUPLOAD timeout has no later event. When the worker finishes, `publishWorkerTerminalStatus()` publishes `MAINTENANCE_ERROR` if the cycle is still `MAINTENANCE_STARTED`, every complete bit is set, and a success bit is missing. It does not publish when stop or the IARM handler is already joining the worker, and it does not publish `MAINTENANCE_COMPLETE`. Full success, including `LastSuccessfulCompletionTime`, stays on the IARM path. A firmware-download abort sets the skip bit and `SWUPDATE_COMPLETE` without `SWUPDATE_SUCCESS`, so that finished cycle is also `MAINTENANCE_ERROR`.
 
 ## Persisted and Runtime State
 
@@ -116,8 +118,9 @@ Every critical section in the source is bracketed with a `// critical section st
 
 - Established order: `m_statusMutex` is acquired before `m_callMutex` when both are needed (see `startMaintenance()`).
 - `task_execution_thread()` holds `m_callMutex` for its whole loop; it explicitly `unlock()`s/`lock()`s around any `m_statusMutex` acquisition so the two are never held at once, avoiding a lock-order inversion (Coverity `ORDER_REVERSAL`).
+- Before `system()`, the worker drops `m_callMutex` and then takes `m_statusMutex`, `m_abortFlagMutex`, and `m_taskMapMutex`, in that order. If stop has already set `m_abort_flag`, the map entry stays clear and the task is not launched. Otherwise the task is marked active, `m_statusMutex` is released, and `m_abortFlagMutex` stays held until `system()` returns, so stop cannot look up a PID before the process exists. `stopMaintenanceTasks()` takes `m_statusMutex` and then `m_abortFlagMutex`.
 - Terminal and start paths release `m_statusMutex` before taking `m_threadMutex` for a blocking join; transition flags reject concurrent start/stop operations during that interval.
-- The per-purpose mutexes (`m_taskMapMutex`, `m_abortFlagMutex`, `m_maintenanceTypeMutex`, `m_currentTaskMutex`) are leaf locks: never held while acquiring another mutex.
+- `m_maintenanceTypeMutex` and `m_currentTaskMutex` are leaf locks. `m_taskMapMutex` is taken only while `m_statusMutex` is already held. `m_abortFlagMutex` is taken only after `m_statusMutex`, and during launch it is still held while `system()` runs.
 
 ## JSON-RPC API
 

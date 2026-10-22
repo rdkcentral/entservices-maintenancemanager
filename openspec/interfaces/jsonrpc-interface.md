@@ -74,6 +74,7 @@
   - `m_currentTaskMutex`: currentTask, written by the worker thread and read by the timer thread.
   - `m_threadMutex`: assignment, joinability checks, and joins of m_thread.
 - Lock ordering: `m_statusMutex` is always acquired before `m_callMutex` when both are needed (see startMaintenance()); the worker thread never holds both simultaneously (it releases `m_callMutex` around any `m_statusMutex` acquisition), avoiding a lock-order inversion between API calls and the worker loop.
+- Task launch takes `m_statusMutex`, then `m_abortFlagMutex`, then `m_taskMapMutex`. The abort mutex stays held through `system()` so stopMaintenance cannot observe an active task whose process does not exist yet.
 - Start and terminal paths release `m_statusMutex` before taking `m_threadMutex` for a blocking join; status-guarded transition flags reject overlapping start/stop operations.
 
 - Mixed mutex/condition-variable design implies potential contention points between API calls and event handling during active maintenance.
