@@ -320,6 +320,7 @@ namespace WPEFramework
               m_abort_flag(false),
               g_task_status(0),
               g_unsolicited_complete(false),
+              m_taskWakeRequested(false),
               m_authservicePlugin(nullptr)
         {
             MaintenanceManager::_instance = this;
@@ -499,6 +500,10 @@ namespace WPEFramework
                 int task_status = -1;
                 task = tasks[i];
                 currentTask = task;
+                /* Arm the persistent wake predicate before the task can emit an
+                 * IARM completion event. A notification received before wait()
+                 * is therefore retained in m_taskWakeRequested. */
+                prepareTaskWait();
                 task += " &";
                 task += "\0";
                 if (!m_abort_flag)
@@ -552,7 +557,9 @@ namespace WPEFramework
                     {
                         MM_LOGINFO("Waiting to unlock.. [%d/%d]", i + 1, (int)tasks.size());
 #if !defined(GTEST_ENABLE)
-                        task_thread.wait(lck);
+                        lck.unlock();
+                        waitForTaskCompletion();
+                        lck.lock();
 #endif
                         if (task_stopTimer())
                         {
@@ -580,6 +587,31 @@ namespace WPEFramework
             }
             MM_LOGINFO("Worker Thread Completed");
         } /* end of task_execution_thread() */
+
+        void MaintenanceManager::prepareTaskWait()
+        {
+            std::lock_guard<std::mutex> taskGuard(m_taskConditionMutex);
+            m_taskWakeRequested = false;
+        }
+
+        void MaintenanceManager::signalTaskWorker()
+        {
+            {
+                std::lock_guard<std::mutex> taskGuard(m_taskConditionMutex);
+                m_taskWakeRequested = true;
+            }
+            m_taskCondition.notify_one();
+        }
+
+        void MaintenanceManager::waitForTaskCompletion()
+        {
+            std::unique_lock<std::mutex> taskLock(m_taskConditionMutex);
+            /* wait()'s predicate form puts this read in a lambda, which Coverity treats as an unlocked operator(). */
+            while (!m_taskWakeRequested)
+            {
+                m_taskCondition.wait(taskLock);
+            }
+        }
 
         bool MaintenanceManager::isWhoAmIEnabled()
         {
@@ -886,7 +918,7 @@ namespace WPEFramework
                 {
                     MaintenanceManager::_instance->m_task_map[failedTask] = false;
                     SET_STATUS(MaintenanceManager::_instance->g_task_status, complete_status);
-                    MaintenanceManager::_instance->task_thread.notify_one();
+                    MaintenanceManager::_instance->signalTaskWorker();
                     MM_LOGINFO("Set %s Task to ERROR", failedTask);
                 }
             }
@@ -1666,8 +1698,8 @@ namespace WPEFramework
                                 {
                                     SET_STATUS(g_task_status, RFC_SUCCESS);
                                     SET_STATUS(g_task_status, RFC_COMPLETE);
-                                    task_thread.notify_one();
                                     m_task_map[task_names_foreground[TASK_RFC].c_str()] = false;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_FWDOWNLOAD_COMPLETE:
@@ -1680,8 +1712,8 @@ namespace WPEFramework
                                 {
                                     SET_STATUS(g_task_status, SWUPDATE_SUCCESS);
                                     SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
-                                    task_thread.notify_one();
                                     m_task_map[task_names_foreground[TASK_SWUPDATE].c_str()] = false;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_LOGUPLOAD_COMPLETE:
@@ -1694,8 +1726,8 @@ namespace WPEFramework
                                 {
                                     SET_STATUS(g_task_status, LOGUPLOAD_SUCCESS);
                                     SET_STATUS(g_task_status, LOGUPLOAD_COMPLETE);
-                                    task_thread.notify_one();
                                     m_task_map[task_names_foreground[TASK_LOGUPLOAD].c_str()] = false;
+                                    signalTaskWorker();
                                 }
 
                                 break;
@@ -1710,8 +1742,8 @@ namespace WPEFramework
                                 SET_STATUS(g_task_status, TASK_SKIPPED);
                                 /* we say FW update task complete */
                                 SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
-                                task_thread.notify_one();
                                 m_task_map[task_names_foreground[TASK_SWUPDATE].c_str()] = false;
+                                signalTaskWorker();
                                 MM_LOGINFO("FW Download task aborted");
                                 break;
                             case MAINT_RFC_ERROR:
@@ -1723,9 +1755,9 @@ namespace WPEFramework
                                 else
                                 {
                                     SET_STATUS(g_task_status, RFC_COMPLETE);
-                                    task_thread.notify_one();
                                     MM_LOGINFO("Error encountered in RFC Task");
                                     m_task_map[task_names_foreground[TASK_RFC].c_str()] = true;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_LOGUPLOAD_ERROR:
@@ -1737,9 +1769,9 @@ namespace WPEFramework
                                 else
                                 {
                                     SET_STATUS(g_task_status, LOGUPLOAD_COMPLETE);
-                                    task_thread.notify_one();
                                     MM_LOGINFO("Error encountered in LOGUPLOAD Task");
                                     m_task_map[task_names_foreground[TASK_LOGUPLOAD].c_str()] = true;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_FWDOWNLOAD_ERROR:
@@ -1751,9 +1783,9 @@ namespace WPEFramework
                                 else
                                 {
                                     SET_STATUS(g_task_status, SWUPDATE_COMPLETE);
-                                    task_thread.notify_one();
                                     MM_LOGINFO("Error encountered in SWUPDATE Task");
                                     m_task_map[task_names_foreground[TASK_SWUPDATE].c_str()] = true;
+                                    signalTaskWorker();
                                 }
                                 break;
                             case MAINT_RFC_INPROGRESS:
@@ -2758,6 +2790,8 @@ namespace WPEFramework
                 else{
                     MM_LOGERR("task_stopTimer() did not stop the Timer");
                 }
+                signalTaskWorker();
+                /* WhoAmI still waits on task_thread, so stop must wake that path too. */
                 task_thread.notify_one();
                 if (m_thread.joinable())
                 {
