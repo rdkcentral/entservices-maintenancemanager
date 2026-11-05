@@ -21,6 +21,7 @@ set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 set(PLUGIN_MAINTENANCEMGR_STARTUPORDER "" CACHE STRING "To configure startup order of MaintenanceManager plugin")
 
 find_package(${NAMESPACE}Plugins REQUIRED)
+find_package(${NAMESPACE}Helpers CONFIG REQUIRED)
 
 add_library(${MODULE_NAME} SHARED
         MaintenanceManager.cpp
@@ -51,6 +52,8 @@ endif(IARMBus_FOUND)
 
 target_include_directories(${MODULE_NAME} PRIVATE ../helpers)
 target_include_directories(${MODULE_NAME} PRIVATE ./)
+
+target_link_libraries(${MODULE_NAME} PRIVATE ${NAMESPACE}::${NAMESPACE}Helpers)
 
 set_source_files_properties(MaintenanceManager.cpp PROPERTIES COMPILE_FLAGS "-fexceptions")
 
