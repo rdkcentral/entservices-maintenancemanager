@@ -2848,7 +2848,7 @@ namespace WPEFramework
             }
             else
             {
-                MM_LOGINFO("Didnt find PID for %s", taskname);
+                MM_LOGINFO("Unable to retrieve PID for %s", taskname);
             }
             return k_ret;
         }
