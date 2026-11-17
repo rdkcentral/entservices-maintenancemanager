@@ -230,8 +230,12 @@ namespace WPEFramework
             std::mutex m_maintenanceTypeMutex; /* Guards g_maintenance_type, which is read/written from multiple threads */
             std::mutex m_currentTaskMutex; /* Guards currentTask, written by task_execution_thread() and read by timer_handler() on the timer thread */
             std::mutex m_threadMutex; /* Guards assignment, joinability checks, and joins of m_thread */
+            /* Leaf lock: never take another mutex while holding m_taskConditionMutex (Coverity ORDER_REVERSAL). */
+            std::mutex m_taskConditionMutex; /* Guards m_taskWakeRequested so a wake cannot be lost before the worker waits */
             std::condition_variable task_thread;
+            std::condition_variable m_taskCondition;
             std::thread m_thread;
+            bool m_taskWakeRequested = false; /* Guarded by m_taskConditionMutex */
 
             std::map<string, bool> m_task_map;
             std::map<string, string> m_param_map;
@@ -245,6 +249,9 @@ namespace WPEFramework
 
             bool isDeviceOnline();
             void task_execution_thread();
+            void prepareTaskWait();
+            void signalTaskWorker();
+            void waitForTaskCompletion();
             void requestSystemReboot();
             void maintenanceManagerOnBootup();
             bool checkAutoRebootFlag();
