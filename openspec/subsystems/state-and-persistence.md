@@ -51,7 +51,7 @@
 
 ## Bookkeeping semantics
 
-- LastSuccessfulCompletionTime is stored only when all tasks succeed.
+- LastSuccessfulCompletionTime is stored only when all tasks succeed, on the IARM completion path. A LOGUPLOAD timeout publishes MAINTENANCE_ERROR and does not update that timestamp.
 - LastMaintenanceStatus is used at boot to determine whether unsolicited execution can be skipped after a maintenance-triggered reboot.
 - Reboot pending flag set on MAINT_REBOOT_REQUIRED event and also set true at solicited start path.
 
@@ -61,4 +61,4 @@
 
 - m_callMutex, m_statusMutex, and condition variable interactions protect state mutation/read paths.
 
-- Formal lock ordering policy is not documented, so deadlock freedom depends on implementation discipline and runtime coverage.
+- Lock order is status, then call; status, then abort, then the task map. The worker drops the call mutex before taking the status mutex. See MaintenanceManager/README.md.

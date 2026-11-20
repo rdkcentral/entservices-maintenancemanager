@@ -8,7 +8,8 @@
 
 2. Timeout behavior under real task hangs
 - Unknown: Reliability of the POSIX SIGEV_THREAD timer callback under production load (glibc spawns a helper thread per expiration), and whether the SIGALRM SIG_IGN safety net (for stray external SIGALRM) has any interaction with other components in the process.
-- Validate: Induce controlled hangs in each task and verify timeout handling, status bit updates, and cycle finalization.
+- Expected: the timer sets that task's complete bit and not its success bit. An RFC or SWUPDATE hang is closed by a later IARM event. A LOGUPLOAD hang ends as MAINTENANCE_ERROR from the worker, and the status does not stay MAINTENANCE_STARTED.
+- Validate: Induce controlled hangs in each task and confirm those status bits and the terminal notification on device.
 
 3. Abort semantics for SIGUSR1
 - Unknown: Whether rfcMgr and rdkvfwupgrader always implement graceful SIGUSR1 handling.
