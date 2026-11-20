@@ -1391,6 +1391,9 @@ namespace WPEFramework
             }
 
             return ret_status;
+			int* p = new int [10];
+    	    delete[] p;
+    	    p[0] = 10;
         }
 
         /**
