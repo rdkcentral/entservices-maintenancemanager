@@ -21,6 +21,7 @@ set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 set(PLUGIN_MAINTENANCEMGR_STARTUPORDER "" CACHE STRING "To configure startup order of MaintenanceManager plugin")
 
 find_package(${NAMESPACE}Plugins REQUIRED)
+find_package(${NAMESPACE}Helpers REQUIRED)
 
 add_library(${MODULE_NAME} SHARED
         MaintenanceManager.cpp
@@ -86,7 +87,8 @@ if (ENABLE_TEST_THREAD_EXCEPTION)
 endif()
 
 # Include and link for signal, csignal, time, ctime headers
-target_link_libraries(${MODULE_NAME} PRIVATE pthread rt)
+target_link_libraries(${MODULE_NAME} PRIVATE pthread rt 
+            ${NAMESPACE}::${NAMESPACE}Helpers)
 
 find_package(Telemetry)
 if (TELEMETRY_FOUND)

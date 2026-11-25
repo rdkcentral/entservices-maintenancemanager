@@ -270,7 +270,7 @@ namespace Thunder
         /* Global time variable */
         MaintenanceManager *MaintenanceManager::_instance = nullptr;
 
-        cSettings MaintenanceManager::m_setting(MAINTENANCE_MGR_RECORD_FILE);
+        SyncedSettings MaintenanceManager::m_setting(MAINTENANCE_MGR_RECORD_FILE);
 
         /* Static Member Definitions */
         timer_t MaintenanceManager::timerid;

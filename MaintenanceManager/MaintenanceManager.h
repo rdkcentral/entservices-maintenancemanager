@@ -169,6 +169,45 @@ namespace Thunder
 {
     namespace Plugin
     {
+        class SyncedSettings : public cSettings {
+            std::mutex settingsMutex;
+
+        public:
+            SyncedSettings() = delete;
+
+            SyncedSettings(std::string file) : cSettings(file) {}
+
+            ~SyncedSettings() = default;
+
+            SyncedSettings(const SyncedSettings&) = delete;
+            SyncedSettings(SyncedSettings&&) = delete;
+            SyncedSettings& operator=(const SyncedSettings&) = delete;
+            SyncedSettings& operator=(SyncedSettings&&) = delete;
+            
+            JsonValue getValueSync(const std::string& key)
+            {
+                std::lock_guard<std::mutex> lock(settingsMutex);
+                return cSettings::getValue(key);
+            }
+
+            bool setValueSync(const std::string& key, const std::string& value)
+            {
+                std::lock_guard<std::mutex> lock(settingsMutex);
+                return cSettings::setValue(key, value);
+            }
+
+            bool containsSync(const std::string& key)
+            {
+                std::lock_guard<std::mutex> lock(settingsMutex);
+                return cSettings::contains(key);
+            }
+
+            bool removeSync(const std::string& key)
+            {
+                std::lock_guard<std::mutex> lock(settingsMutex);
+                return cSettings::remove(key);
+            }
+        };
 
         /* This is a server for a JSONRPC communication channel.
          * For a plugin to be capable to handle JSONRPC, inherit from PluginHost::JSONRPC.
@@ -206,7 +245,7 @@ namespace Thunder
             IARM_Bus_MaintMGR_EventData_t *g_maintenance_data;
             Maint_notify_status_t m_notify_status;
             Maintenance_Type_t g_maintenance_type;
-            static cSettings m_setting;
+            static SyncedSettings m_setting;
             bool m_abort_flag;
             uint16_t g_task_status;
             bool g_unsolicited_complete;
